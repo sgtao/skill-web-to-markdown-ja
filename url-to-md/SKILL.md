@@ -105,7 +105,41 @@ PDF=$(python3 scripts/fetch_convert.py "<URL>" --pdf-passthrough -o work)
 soffice --headless --convert-to docx old.doc
 ```
 
-### Step 5. 出力の確認
+### Step 5. YAMLフロントマターを付与
+
+変換済みMarkdownの先頭に、出典・メタ情報のヘッダーを付ける。
+
+```bash
+python3 scripts/add_frontmatter.py body.md \
+    --url "<URL>" --format <html|pdf|docx|xlsx|pptx> \
+    --title "<タイトル>" --summary "<200字以内の要約>" -o final.md
+```
+
+ヘッダー項目：
+
+```yaml
+---
+title: 文書タイトル
+source_url: 変換元URL
+source_format: html|pdf|docx|xlsx|pptx
+has_figures: true|false        # SVG/Mermaid/画像を含むか（自動判定）
+summary: 200字以内の要約
+retrieved_at: ISO8601日時       # 自動
+---
+```
+
+**自動で埋まる項目**：`source_url` `source_format` `has_figures` `retrieved_at`。
+これらは引数とスクリプトのみで確定する。
+
+**内容に依存する項目**：`title` `summary`。
+`--title` `--summary` を省略すると、本文先頭の見出しと先頭段落200字から
+機械抽出する（フォールバック）。ただし**より的確なタイトル・要約が望ましいので、
+Claudeが本文を読んで `--title` `--summary` を明示指定することを推奨**する。
+要約は200字以内（超過分は自動で丸める）。
+
+二重付与防止：既にフロントマターがあるMarkdownには付与しない（警告のみ）。
+
+### Step 6. 出力の確認
 
 - HTMLは本文のみか（ナビ・広告が残っていないか）、画像URLが絶対か
 - 画像URLは実際に到達可能か（リンク切れでないか）
