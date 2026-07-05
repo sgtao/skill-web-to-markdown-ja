@@ -101,9 +101,9 @@ def build_frontmatter(title, url, fmt, has_fig, summary, when=None,
     if channel:
         lines.append(f"channel: {yaml_escape(channel)}")
     if published:
-        lines.append(f"published: {published}")
+        lines.append(f"published: {yaml_escape(published)}")
     if duration:
-        lines.append(f'duration: "{duration}"')
+        lines.append(f"duration: {yaml_escape(duration)}")
     lines += [
         f"has_figures: {'true' if has_fig else 'false'}",
         f"summary: {yaml_escape(summary)}",
