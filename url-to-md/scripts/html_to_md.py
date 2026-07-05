@@ -1,4 +1,12 @@
 #!/usr/bin/env python3
+# /// script
+# requires-python = ">=3.10"
+# dependencies = [
+#     "trafilatura",
+#     "beautifulsoup4",
+#     "markitdown[docx]>=0.1.5",
+# ]
+# ///
 """
 html_to_md.py — HTMLを本文抽出し、画像srcを絶対URL化してMarkdownに変換する。
 

@@ -1,4 +1,12 @@
 #!/usr/bin/env python3
+# /// script
+# requires-python = ">=3.10"
+# dependencies = [
+#     "trafilatura",
+#     "beautifulsoup4",
+#     "markitdown[docx]>=0.1.5",
+# ]
+# ///
 """
 fetch_convert.py — URLからファイルを取得し、形式を判定してMarkdownに変換する。
 
@@ -8,11 +16,13 @@ PDF だけは markitdown の簡易変換に頼らず、pdf-to-md-ja スキルへ
 PDFはダウンロードのみ行い、変換は呼び出し側に委ねる。
 
 使い方:
-  python3 fetch_convert.py <URL> [-o out.md]
-  python3 fetch_convert.py <URL> --pdf-passthrough   # PDFは保存だけして委譲
+  uv run fetch_convert.py <URL> [-o out.md]          # uv（推奨・依存自動解決）
+  python3 fetch_convert.py <URL> [-o out.md]         # pip環境
+  uv run fetch_convert.py <URL> --pdf-passthrough    # PDFは保存だけして委譲
 
 依存:
-  curl（システム）, pip: markitdown[docx]
+  curl（システム）, Python: markitdown[docx], trafilatura, beautifulsoup4
+  （uv があれば自動解決。無ければ pip install）
 """
 import argparse
 import subprocess

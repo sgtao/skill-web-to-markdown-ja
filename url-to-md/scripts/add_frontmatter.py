@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# /// script
+# requires-python = ">=3.10"
+# dependencies = []
+# ///
 """
 add_frontmatter.py — 変換済みMarkdownにYAMLフロントマターを付与する。
 
