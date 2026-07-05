@@ -25,7 +25,7 @@ claude.ai上で curl が制限される場合は web_fetch ツールで代替す
 ## 処理の全体像
 
 ```
-URL ──> 形式判定
+URL ──curl──> 形式判定
           ├─ youtube URL       → youtube_to_md.py → 概要+Transcript（完結）
           ├─ html              → 本文抽出+画像絶対URL化 → Markdown（完結）
           ├─ pdf               → 保存            ┐
@@ -103,6 +103,7 @@ scripts/html_to_md.py が担う。PDF変換は不要。
 
 ```bash
 uv run scripts/html_to_md.py "<URL>" -o out.md
+# uvが無い場合: python3 scripts/html_to_md.py "<URL>" -o out.md
 ```
 
 処理内容：
@@ -125,6 +126,7 @@ docx/xlsx/pptx は **LibreOfficeでPDF化** し、いずれもPDFパスをstdout
 
 ```bash
 PDF=$(uv run scripts/fetch_convert.py "<URL>" --pdf-passthrough -o work)
+# uvが無い場合: PDF=$(python3 scripts/fetch_convert.py "<URL>" --pdf-passthrough -o work)
 # soffice --headless --convert-to pdf を内部実行（Officeの場合）
 # → $PDF を pdf-to-md-ja スキルで変換（pdfinfo/pdfimages検証 → 図のSVG/Mermaid化）
 ```
@@ -147,6 +149,9 @@ soffice --headless --convert-to docx old.doc
 uv run scripts/add_frontmatter.py body.md \
     --url "<URL>" --format <html|pdf|docx|xlsx|pptx|youtube> \
     --title "<タイトル>" --summary "<200字以内の要約>" -o final.md
+# uvが無い場合: python3 scripts/add_frontmatter.py body.md \
+#     --url "<URL>" --format <html|pdf|docx|xlsx|pptx|youtube> \
+#     --title "<タイトル>" --summary "<200字以内の要約>" -o final.md
 ```
 
 ヘッダー項目：
