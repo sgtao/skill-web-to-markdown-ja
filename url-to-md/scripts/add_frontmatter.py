@@ -9,10 +9,11 @@ add_frontmatter.py — 変換済みMarkdownにYAMLフロントマターを付与
 ヘッダー項目:
   title         文書タイトル（本文先頭の見出し or 明示指定）
   source_url    変換元URL
-  source_format html|pdf|docx|xlsx|pptx
+  source_format html|pdf|docx|xlsx|pptx|youtube
   has_figures   SVG/Mermaid/画像を含むか（本文から自動判定）
   summary       200文字以内の要約（明示指定 or 先頭本文から自動抽出）
   retrieved_at  取得日時（ISO8601, 自動）
+  channel/published/duration  YouTube用の任意項目（指定時のみ出力）
 
 自動で確実に埋まるもの: source_url, source_format, has_figures, retrieved_at
 内容に依存するもの: title, summary
@@ -88,13 +89,22 @@ def yaml_escape(s):
     return s
 
 
-def build_frontmatter(title, url, fmt, has_fig, summary, when=None):
+def build_frontmatter(title, url, fmt, has_fig, summary, when=None,
+                      channel=None, published=None, duration=None):
     when = when or datetime.datetime.now().astimezone().isoformat(timespec="seconds")
     lines = [
         "---",
         f"title: {yaml_escape(title)}",
         f"source_url: {yaml_escape(url)}",
         f"source_format: {fmt}",
+    ]
+    if channel:
+        lines.append(f"channel: {yaml_escape(channel)}")
+    if published:
+        lines.append(f"published: {published}")
+    if duration:
+        lines.append(f'duration: "{duration}"')
+    lines += [
         f"has_figures: {'true' if has_fig else 'false'}",
         f"summary: {yaml_escape(summary)}",
         f"retrieved_at: {when}",
@@ -109,9 +119,12 @@ def main():
     ap.add_argument("body", help="変換済みMarkdownファイル")
     ap.add_argument("--url", required=True)
     ap.add_argument("--format", required=True,
-                    choices=["html", "pdf", "docx", "xlsx", "pptx"])
+                    choices=["html", "pdf", "docx", "xlsx", "pptx", "youtube"])
     ap.add_argument("--title", default=None, help="省略時は本文先頭見出し")
     ap.add_argument("--summary", default=None, help="省略時は先頭段落200字")
+    ap.add_argument("--channel", default=None, help="YouTube: チャンネル名")
+    ap.add_argument("--published", default=None, help="YouTube: 公開日 YYYY-MM-DD")
+    ap.add_argument("--duration", default=None, help="YouTube: 動画の長さ 例 12:34")
     ap.add_argument("--retrieved-at", default=None)
     ap.add_argument("-o", "--output", default=None)
     args = ap.parse_args()
@@ -130,7 +143,9 @@ def main():
             summary = summary[:199].rstrip() + "…"  # CLI指定要約も200字に丸める
         has_fig = detect_has_figures(md)
         fm = build_frontmatter(title, args.url, args.format, has_fig,
-                               summary, args.retrieved_at)
+                               summary, args.retrieved_at,
+                               channel=args.channel, published=args.published,
+                               duration=args.duration)
         out = fm + md
 
     if args.output:
