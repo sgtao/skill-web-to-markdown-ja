@@ -24,6 +24,7 @@ uv run のエフェメラル環境でも pip 環境でも PATH に依存せず�
 """
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
@@ -35,11 +36,19 @@ YOUTUBE_URL_RE = re.compile(
     r"[\w-]{6,}"
 )
 
-INSTALL_HINT = (
-    "yt-dlp が見つかりません。次のいずれかで実行してください:\n"
-    "  uv run scripts/youtube_to_md.py <URL> -o out.md   # uvが依存を自動解決\n"
-    "  pip install yt-dlp --break-system-packages        # pip環境\n"
-)
+
+def _install_hint() -> str:
+    """yt-dlp未導入時の案内文を、このスクリプト自身の絶対パスで組み立てる。
+
+    呼び出し時のカレントディレクトリに関係なく正しいパスを示すため、
+    `scripts/youtube_to_md.py` のような相対パスは使わない。
+    """
+    this_script = os.path.abspath(__file__)
+    return (
+        "yt-dlp が見つかりません。次のいずれかで実行してください:\n"
+        f'  uv run "{this_script}" <URL> -o out.md   # uvが依存を自動解決\n'
+        "  pip install yt-dlp --break-system-packages        # pip環境\n"
+    )
 
 
 def is_youtube_url(url: str) -> bool:
@@ -78,7 +87,7 @@ def fetch_video_info(url: str, timeout: int = 120) -> dict:
         raise RuntimeError(f"yt-dlpの実行に失敗しました: {e}") from e
     if r.returncode != 0:
         if "No module named" in r.stderr:
-            raise RuntimeError(INSTALL_HINT)
+            raise RuntimeError(_install_hint())
         raise RuntimeError(f"yt-dlp失敗: {r.stderr.strip()[-500:]}")
     try:
         return json.loads(r.stdout)
