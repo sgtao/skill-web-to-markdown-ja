@@ -69,12 +69,21 @@ def fetch_video_info(url: str, timeout: int = 120) -> dict:
     """
     cmd = [sys.executable, "-m", "yt_dlp",
            "--dump-json", "--skip-download", "--no-warnings", url]
-    r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True,
+                           encoding="utf-8", errors="replace", timeout=timeout)
+    except subprocess.TimeoutExpired as e:
+        raise RuntimeError(f"yt-dlpがタイムアウトしました（{timeout}秒）: {e}") from e
+    except OSError as e:
+        raise RuntimeError(f"yt-dlpの実行に失敗しました: {e}") from e
     if r.returncode != 0:
         if "No module named" in r.stderr:
             raise RuntimeError(INSTALL_HINT)
         raise RuntimeError(f"yt-dlp失敗: {r.stderr.strip()[-500:]}")
-    return json.loads(r.stdout)
+    try:
+        return json.loads(r.stdout)
+    except json.JSONDecodeError as e:
+        raise RuntimeError(f"yt-dlpの出力(JSON)のパース失敗: {e}") from e
 
 
 def _json3_url(tracks: list[dict]) -> str | None:
@@ -149,7 +158,8 @@ def download_json3(url: str, timeout: int = 60) -> dict:
 def parse_json3(data: dict) -> list[tuple[float, float, str]]:
     """json3のeventsを (開始秒, 長さ秒, テキスト) の列に展開する。
 
-    連続する同一テキスト（自動生成字幕のロール表示による重複）は除去する。
+    連続する同一テキスト（自動生成字幕のロール表示による重複）は1件に統合し、
+    終了時刻は重複イベントの終了時刻まで延長する（タイムスタンプのずれ防止）。
 
     Args:
         data: download_json3 の戻り値。
@@ -166,10 +176,13 @@ def parse_json3(data: dict) -> list[tuple[float, float, str]]:
         text = text.replace("\n", " ").strip()
         if not text:
             continue
-        if chunks and chunks[-1][2] == text:
-            continue
         start = ev.get("tStartMs", 0) / 1000.0
         dur = ev.get("dDurationMs", 0) / 1000.0
+        if chunks and chunks[-1][2] == text:
+            prev_start, prev_dur, prev_text = chunks[-1]
+            new_end = max(prev_start + prev_dur, start + dur)
+            chunks[-1] = (prev_start, new_end - prev_start, prev_text)
+            continue
         chunks.append((start, dur, text))
     return chunks
 
@@ -204,7 +217,7 @@ def merge_paragraphs(
         if cur_start is None:
             cur_start, cur_text = start, text
         else:
-            gap = start - prev_end if prev_end is not None else 0.0
+            gap = start - prev_end
             need_break = (
                 gap > gap_sec
                 or len(cur_text) >= hard_len
