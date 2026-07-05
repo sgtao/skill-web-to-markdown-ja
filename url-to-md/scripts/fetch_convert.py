@@ -103,6 +103,14 @@ def main():
                     help="PDFは保存のみ。変換はpdf-to-md-jaへ委譲")
     args = ap.parse_args()
 
+    # YouTube はダウンロード不要の専用経路（youtube_to_md.py へ誘導する安全網）
+    from youtube_to_md import is_youtube_url
+    if is_youtube_url(args.url):
+        print("[判定] YouTube URL です。専用スクリプトを使ってください:", file=sys.stderr)
+        print(f'  uv run scripts/youtube_to_md.py "{args.url}" -o out.md', file=sys.stderr)
+        print(f'  （uvが無い場合: python3 scripts/youtube_to_md.py ...）', file=sys.stderr)
+        return
+
     tmpdir = tempfile.mkdtemp()
     raw = os.path.join(tmpdir, "downloaded")
     print(f"[1] 取得: {args.url}", file=sys.stderr)
