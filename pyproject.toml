@@ -1,0 +1,14 @@
+[project]
+name = "skill-web-to-markdown"
+version = "0.2.0"
+description = "Web上のコンテンツ（HTML/PDF/Office/YouTube）をMarkdownへ変換するClaude Code用スキルセット"
+requires-python = ">=3.10"
+dependencies = [
+    "markitdown[docx]>=0.1.5",
+    "trafilatura",
+    "beautifulsoup4",
+    "yt-dlp",
+]
+
+[tool.uv]
+package = false
