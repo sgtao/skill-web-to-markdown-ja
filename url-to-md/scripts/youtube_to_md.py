@@ -293,6 +293,14 @@ def main() -> None:
     try:
         print("[1] メタデータ取得中...", file=sys.stderr)
         info = fetch_video_info(args.url, timeout=args.timeout)
+        channel = info.get("channel") or info.get("uploader") or ""
+        upload_date = info.get("upload_date")  # yt-dlpは "YYYYMMDD" 形式の文字列
+        published = (f"{upload_date[:4]}-{upload_date[4:6]}-{upload_date[6:8]}"
+                     if upload_date else "")
+        duration_sec = info.get("duration")
+        duration_str = format_ts(duration_sec) if isinstance(duration_sec, (int, float)) else ""
+        print(f"[1] channel={channel!r} published={published!r} duration={duration_str!r}",
+              file=sys.stderr)
         track = select_caption_track(info)
         paragraphs: list[tuple[float, str]] | None = None
         kind: str | None = None
