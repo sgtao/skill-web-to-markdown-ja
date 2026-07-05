@@ -25,12 +25,12 @@ claude.ai上で curl が制限される場合は web_fetch ツールで代替す
 ## 処理の全体像
 
 ```
-URL ──curl──> 形式判定
-          ├─ youtube URL       → youtube_to_md.py → 概要+Transcript（完結）
-          ├─ html              → 本文抽出+画像絶対URL化 → Markdown（完結）
-          ├─ pdf               → 保存            ┐
-          ├─ docx/xlsx/pptx    → sofficeでPDF化  ┴→ pdf-to-md-ja へ委譲
-          └─ 旧 doc/xls/ppt    → sofficeで新形式へ変換後、上へ
+URL ─┬─ youtube URL             → youtube_to_md.py（curl不使用）→ 概要+Transcript（完結）
+     └─curl──> 形式判定
+               ├─ html              → 本文抽出+画像絶対URL化 → Markdown（完結）
+               ├─ pdf               → 保存            ┐
+               ├─ docx/xlsx/pptx    → sofficeでPDF化  ┴→ pdf-to-md-ja へ委譲
+               └─ 旧 doc/xls/ppt    → sofficeで新形式へ変換後、上へ
 ```
 
 図の扱いは **非対称**。これは媒体特性による自然な設計：
@@ -93,6 +93,7 @@ uv run scripts/fetch_convert.py "<URL>" --pdf-passthrough     # pdf/officeはPDF
 ```
 
 fetch_convert.py の動作：
+0. YouTube URL なら curl を使わず、案内を表示して即座に終了する（Step 0 参照）
 1. curl -sIL でヘッダの Content-Type を取得
 2. URL末尾の拡張子 + Content-Type で形式判定（detect_format）
 3. 形式で分岐（下記）
