@@ -22,6 +22,8 @@ yt-dlp でメタデータ（タイトル・チャンネル・概要全文）と�
 yt-dlp は `python -m yt_dlp` として同一インタープリタで呼ぶため、
 uv run のエフェメラル環境でも pip 環境でも PATH に依存せず動く。
 """
+from __future__ import annotations
+
 import argparse
 import json
 import os
