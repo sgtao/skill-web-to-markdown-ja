@@ -146,8 +146,11 @@ main() {
   # リポジトリルートとスキルディレクトリの検出（複数対応）
   local root
   root="$(resolve_root)"
-  local skill_dirs=()
-  mapfile -t skill_dirs < <(detect_skill_dirs "${root}")
+  local skill_dirs=() line
+  # mapfile は bash 4+ 専用（macOS 標準の bash 3.2 で失敗する）ため while read で配列化する
+  while IFS= read -r line; do
+    [[ -n "${line}" ]] && skill_dirs+=("${line}")
+  done < <(detect_skill_dirs "${root}")
   if [[ ${#skill_dirs[@]} -eq 0 ]]; then
     error "SKILL.md が見つかりません: ${root} 直下を確認してください"
     exit 1
