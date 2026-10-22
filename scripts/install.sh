@@ -1,23 +1,34 @@
 #!/usr/bin/env bash
 # =============================================================================
-# install.sh — Claude Code スキルのインストール支援スクリプト（汎用）
+# install.sh — スキルのインストール支援スクリプト（汎用）
 #
 # リポジトリ直下1階層から SKILL.md を持つディレクトリをすべて検出し、
-# スキルごとに確認しながら ~/.claude/skills へクリーンインストールする。
+# スキルごとに確認しながらインストール先へクリーンインストールする。
+# インストール先は Claude Code / GitHub Copilot / .agents から選べる（既定: Claude Code）。
 #
 # Usage:
-#   bash scripts/install.sh              # スキルごとに確認してコピー
-#   bash scripts/install.sh -y           # 確認なしでコピー（既存は削除して上書き）
-#   bash scripts/install.sh --zip        # dist/ 配下にスキルごとの配布用 ZIP を生成
-#   bash scripts/install.sh --help       # ヘルプ表示
+#   bash scripts/install.sh                       # ~/.claude/skills へスキルごとに確認してコピー
+#   bash scripts/install.sh -t copilot            # ~/.copilot/skills へコピー
+#   bash scripts/install.sh -t claude,agents      # 複数指定（カンマ区切り or -t を繰り返す）
+#   bash scripts/install.sh -t all -y             # 全ターゲットへ確認なしでコピー（既存は削除して上書き）
+#   bash scripts/install.sh --zip                 # dist/ 配下にスキルごとの配布用 ZIP を生成
+#   bash scripts/install.sh --help                # ヘルプ表示
 #
-# Environment variables:
-#   CLAUDE_SKILLS_DIR  - インストール先を上書き（デフォルト: ~/.claude/skills）
+# Targets:
+#   claude   ~/.claude/skills    （Claude Code）
+#   copilot  ~/.copilot/skills   （GitHub Copilot）
+#   agents   ~/.agents/skills    （.agents 規約に対応するエージェント）
+#
+# Environment variables（プロジェクト単位に入れる場合は .github/skills 等を指定）:
+#   CLAUDE_SKILLS_DIR   claude のインストール先を上書き（デフォルト: ~/.claude/skills）
+#   COPILOT_SKILLS_DIR  copilot のインストール先を上書き（デフォルト: ~/.copilot/skills）
+#   AGENTS_SKILLS_DIR   agents のインストール先を上書き（デフォルト: ~/.agents/skills）
 # =============================================================================
 set -euo pipefail
 
 # ─── 設定 ─────────────────────────────────────────────────────────────────────
-INSTALL_DIR_DEFAULT="${HOME}/.claude/skills"
+ALL_TARGETS="claude copilot agents"
+DEFAULT_TARGET="claude"   # -t 未指定時は従来どおり Claude Code のみ
 ASSUME_YES=0   # -y / --yes で 1 になる
 
 # ─── 色定義（TTY 時のみ有効） ─────────────────────────────────────────────────
@@ -45,19 +56,28 @@ confirm() {
 # ─── ヘルプ ───────────────────────────────────────────────────────────────────
 usage() {
   cat <<'EOF'
-install.sh — Claude Code スキルのインストール支援
+install.sh — スキルのインストール支援（Claude Code / GitHub Copilot / .agents）
 
 リポジトリ直下から SKILL.md を持つディレクトリをすべて検出し、
 スキルごとに確認しながらインストール / ZIP 生成する。
 
 Usage:
-  bash scripts/install.sh           ~/.claude/skills へコピー（スキルごとに確認）
-  bash scripts/install.sh -y        確認なしでコピー（既存は削除して上書き）
-  bash scripts/install.sh --zip     dist/ 配下にスキルごとの配布用 ZIP を生成
-  bash scripts/install.sh --help    このヘルプを表示
+  bash scripts/install.sh                  ~/.claude/skills へコピー（スキルごとに確認）
+  bash scripts/install.sh -t <targets>     インストール先を指定（カンマ区切り or -t を繰り返す）
+  bash scripts/install.sh -y               確認なしでコピー（既存は削除して上書き）
+  bash scripts/install.sh --zip            dist/ 配下にスキルごとの配布用 ZIP を生成
+  bash scripts/install.sh --help           このヘルプを表示
 
-Environment:
-  CLAUDE_SKILLS_DIR   インストール先を上書き（デフォルト: ~/.claude/skills）
+Targets（-t / --target。未指定は claude）:
+  claude    ~/.claude/skills     Claude Code
+  copilot   ~/.copilot/skills    GitHub Copilot
+  agents    ~/.agents/skills     .agents 規約に対応するエージェント
+  all       上の3つすべて
+
+Environment（プロジェクト単位に入れる場合は .github/skills 等を指定）:
+  CLAUDE_SKILLS_DIR    claude のインストール先を上書き
+  COPILOT_SKILLS_DIR   copilot のインストール先を上書き
+  AGENTS_SKILLS_DIR    agents のインストール先を上書き
 EOF
 }
 
@@ -82,6 +102,30 @@ list_files() {
   find "${skill_dir}" -type f | sort | sed "s|${root}/||"
 }
 
+# ─── ターゲット名 → インストール先ディレクトリ（環境変数で上書き可） ───────────
+target_dir() {
+  case "$1" in
+    claude)  printf '%s\n' "${CLAUDE_SKILLS_DIR:-${HOME}/.claude/skills}" ;;
+    copilot) printf '%s\n' "${COPILOT_SKILLS_DIR:-${HOME}/.copilot/skills}" ;;
+    agents)  printf '%s\n' "${AGENTS_SKILLS_DIR:-${HOME}/.agents/skills}" ;;
+    *)       return 1 ;;
+  esac
+}
+
+# ─── -t の値（カンマ区切り）を検証し、空白区切りの有効ターゲット名へ展開 ──────
+expand_targets() {
+  local spec="$1" t out=""
+  local IFS=','
+  for t in ${spec}; do
+    case "${t}" in
+      all)                      out="${out} ${ALL_TARGETS}" ;;
+      claude|copilot|agents)    out="${out} ${t}" ;;
+      *) error "不明なターゲット: ${t}（claude / copilot / agents / all）"; return 1 ;;
+    esac
+  done
+  printf '%s\n' "${out# }"
+}
+
 # ─── 配布用 ZIP を dist/<name>-<timestamp>.zip に生成 ─────────────────────────
 build_zip() {
   local root="$1" name="$2" timestamp="$3"
@@ -93,14 +137,13 @@ build_zip() {
   success "ZIP 生成完了: ${zip_path}"
 }
 
-# ─── 1スキルを ~/.claude/skills へクリーンインストール（確認ゲートつき） ───────
+# ─── 1スキルを指定ディレクトリへクリーンインストール（確認ゲートつき） ────────
 # 既存の同名ディレクトリは「削除してからコピー」する（cp -r のmerge上書きで
 # 古いファイルが残るのを防ぐ）。対話時は削除前に必ず確認し、拒否ならスキップ。
 install_skill() {
-  local skill_dir="$1"
+  local skill_dir="$1" install_dir="$2"
   local name
   name="$(basename "${skill_dir}")"
-  local install_dir="${CLAUDE_SKILLS_DIR:-$INSTALL_DIR_DEFAULT}"
   local target="${install_dir}/${name}"
 
   if [[ "${ASSUME_YES}" -ne 1 ]]; then
@@ -130,17 +173,32 @@ install_skill() {
 
 # ─── エントリポイント ─────────────────────────────────────────────────────────
 main() {
-  local mode="install"
+  local mode="install" target_spec=""
 
   # 引数解析
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --zip)      mode="zip" ;;
       -y|--yes)   ASSUME_YES=1 ;;
+      -t|--target)
+        if [[ $# -lt 2 ]]; then error "$1 には値が必要です"; usage; exit 1; fi
+        target_spec="${target_spec:+${target_spec},}$2"
+        shift ;;
+      --target=*) target_spec="${target_spec:+${target_spec},}${1#--target=}" ;;
       -h|--help)  usage; exit 0 ;;
       *)          error "不明な引数: $1"; usage; exit 1 ;;
     esac
     shift
+  done
+
+  # ターゲットの展開（重複を除き、解決後のディレクトリが同じものは1回だけ処理する）
+  local targets=() t dir seen_dirs=" " expanded
+  expanded="$(expand_targets "${target_spec:-${DEFAULT_TARGET}}")" || { usage; exit 1; }
+  for t in ${expanded}; do
+    dir="$(target_dir "${t}")"
+    case "${seen_dirs}" in *" ${dir} "*) continue ;; esac
+    seen_dirs="${seen_dirs}${dir} "
+    targets+=("${t}")
   done
 
   # リポジトリルートとスキルディレクトリの検出（複数対応）
@@ -184,8 +242,12 @@ main() {
       done
       ;;
     install)
-      for d in "${skill_dirs[@]}"; do
-        install_skill "${d}"
+      for t in "${targets[@]}"; do
+        dir="$(target_dir "${t}")"
+        info "インストール先 [${t}]: ${dir}"
+        for d in "${skill_dirs[@]}"; do
+          install_skill "${d}" "${dir}"
+        done
       done
       ;;
   esac

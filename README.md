@@ -29,10 +29,23 @@ URL ─┬─ youtube URL             → youtube_to_md.py（curl不使用）→
 ## インストール
 
 ```bash
-bash scripts/install.sh          # スキルごとに確認しながら ~/.claude/skills へコピー
-bash scripts/install.sh -y       # 確認なしでコピー（既存は削除して上書き）
-bash scripts/install.sh --zip    # dist/ にスキルごとの配布用ZIPを生成
+bash scripts/install.sh                   # スキルごとに確認しながら ~/.claude/skills へコピー
+bash scripts/install.sh -t copilot        # GitHub Copilot 用（~/.copilot/skills）へコピー
+bash scripts/install.sh -t claude,agents  # 複数指定（カンマ区切り or -t の繰り返し）
+bash scripts/install.sh -t all -y         # 全ターゲットへ確認なしでコピー（既存は削除して上書き）
+bash scripts/install.sh --zip             # dist/ にスキルごとの配布用ZIPを生成
 ```
+
+| ターゲット (`-t`) | インストール先 | 対象 | 上書き用の環境変数 |
+|---|---|---|---|
+| `claude`（既定） | `~/.claude/skills` | Claude Code | `CLAUDE_SKILLS_DIR` |
+| `copilot` | `~/.copilot/skills` | GitHub Copilot | `COPILOT_SKILLS_DIR` |
+| `agents` | `~/.agents/skills` | `.agents` 規約に対応するエージェント | `AGENTS_SKILLS_DIR` |
+| `all` | 上の3つすべて | | |
+
+プロジェクト単位に入れる場合は環境変数で指定する
+（例: `COPILOT_SKILLS_DIR=.github/skills bash scripts/install.sh -t copilot`、
+`AGENTS_SKILLS_DIR=.agents/skills bash scripts/install.sh -t agents`）。
 
 手動でコピーする場合は `cp -r url-to-md pdf-to-md-ja ~/.claude/skills/` でもよい。
 
@@ -116,5 +129,5 @@ SVG生成ライブラリ（標準ライブラリのみ）。
 │   ├── references/     # 図の判定・Mermaidパターン・SVGロジックの詳説
 │   └── scripts/        # svg_figures.py（SVGジェネレータ）
 └── scripts/
-    └── install.sh      # インストール支援スクリプト
+    └── install.sh      # インストール支援スクリプト（Claude Code / GitHub Copilot / .agents 対応）
 ```
