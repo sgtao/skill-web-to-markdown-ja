@@ -417,3 +417,12 @@ def test_find_soffice_order(tmp_path, monkeypatch):
     assert _common.find_soffice() == str(fake_env)           # 環境変数が先
     monkeypatch.setenv("SOFFICE_PATH", str(tmp_path / "missing"))
     assert _common.find_soffice() == str(exe)                # 次に PATH
+
+
+def test_clean_xlsx_tables_blanks_nan_and_unnamed():
+    import fetch_convert as fc
+    md = "| a | Unnamed: 1 | b |\n| --- | --- | --- |\n| 1 | NaN | 2 |\n\n本文の NaN は残る"
+    out = fc.clean_xlsx_tables(md)
+    assert "NaN |" not in out and "Unnamed" not in out
+    assert out.splitlines()[0].startswith("| a |")
+    assert "本文の NaN は残る" in out

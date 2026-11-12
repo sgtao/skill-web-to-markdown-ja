@@ -305,6 +305,7 @@ def _selftest(outdir=None):
     import os
     import tempfile
     outdir = outdir or tempfile.gettempdir()  # 一時フォルダは OS に合わせる（Windows に /tmp は無い）
+    os.makedirs(outdir, exist_ok=True)  # 指定されたフォルダが無ければ作る
     donut, w1 = donut_chart(
         [("項目A", 62.5, "#1A237E"), ("項目B", 20.0, "#1565C0"),
          ("項目C", 8.0, "#1E88E5"), ("項目D", 5.5, "#039BE5"),

@@ -260,3 +260,12 @@ def test_render_option_without_cairosvg_stops_cleanly(tmp_path, pdf_scripts_dir)
 
 def test_tidy_text():
     assert pdf_probe.tidy("   \n\n  a  \n\n\n\n b\n  \n") == "  a\n\n b"
+
+
+def test_svg_figures_outdir_is_created(tmp_path, pdf_scripts_dir):
+    import os, subprocess, sys
+    out = tmp_path / "new" / "figs"
+    r = subprocess.run([sys.executable, os.path.join(str(pdf_scripts_dir), "svg_figures.py"), "--outdir", str(out)],
+                       capture_output=True, text=True, encoding="utf-8")
+    assert r.returncode == 0, r.stderr
+    assert any(out.glob("*.svg"))

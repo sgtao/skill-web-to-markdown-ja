@@ -8,6 +8,16 @@
 v0.0.1 から数え直した。
 
 ---
+## [Unreleased]
+
+### 修正（Mac での通し実行で見つけたもの）
+
+- `fetch_convert.py`: 終了メッセージの次の手段が、廃止予定の `--pdf-passthrough` を指していた。`--route pdf` / `--route direct` に直した
+- `fetch_convert.py`: xlsx の直接変換で、空のセルが `NaN`、見出しの無い列が `Unnamed: N` と出ていた。空にした（`clean_xlsx_tables`）
+- `svg_figures.py --outdir`: 存在しないフォルダを指定するとトレースバックで落ちた。フォルダを作るようにした
+- テストを 2 件追加（全 198 件）
+
+---
 ## [v0.0.6] - 2026-11-12
 
 ### 変更｜`scripts/install.sh` を `13_skill-websearch-slide-ja` のものに合わせた（P6）

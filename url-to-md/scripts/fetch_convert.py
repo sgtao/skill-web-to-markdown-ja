@@ -34,6 +34,7 @@ fetch_convert.py — URL または手元のファイルの形式を判定して�
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -134,9 +135,9 @@ def _convert_with_markitdown(path, fmt):
     except Exception as e:  # noqa: BLE001 - markitdown の例外の型は版で変わる
         name = type(e).__name__
         if "MissingDependency" in name or "MissingDependency" in str(e):
-            hint = ("PDF は --pdf-passthrough を付けて pdf-to-md-ja スキルで変換してください。"
+            hint = ("PDF は --route pdf を付けて pdf-to-md-ja スキルで変換してください。"
                     if fmt == "pdf" else
-                    "PDF で保存し直して渡すか、--pdf-passthrough（LibreOffice が必要）を"
+                    "PDF で保存し直して渡すか、--route pdf（LibreOffice が必要）を"
                     "使ってください。")
             raise StopReason(
                 "MISSING_TOOL",
@@ -163,7 +164,22 @@ def convert(path, fmt, url=None, content_type="", force=False):
         if not url:  # 手元のファイルは基点の URL が無いので、相対パスはそのまま残す
             return to_markdown(html, None)
         return to_markdown(absolutize(html, url), url)
-    return _convert_with_markitdown(path, fmt)
+    md = _convert_with_markitdown(path, fmt)
+    return clean_xlsx_tables(md) if fmt == "xlsx" else md
+
+
+def clean_xlsx_tables(md):
+    """xlsx の表で、空のセルが "NaN"、見出しの無い列が "Unnamed: N" と出るのを空にする。
+    markitdown が pandas の既定値をそのまま出すため。本物の文字列 "NaN" のセルも空になるが、まれ。"""
+    out = []
+    for line in md.split("\n"):
+        if line.startswith("|") and line.endswith("|"):
+            cells = line[1:-1].split("|")
+            cells = ["" if c.strip() == "NaN" or re.fullmatch(r"\s*Unnamed: \d+\s*", c) else c
+                     for c in cells]
+            line = "|" + "|".join(c if c else " " for c in cells) + "|"
+        out.append(line)
+    return "\n".join(out)
 
 
 def require_soffice():
@@ -174,7 +190,7 @@ def require_soffice():
             "MISSING_TOOL",
             "LibreOffice（soffice）が見つかりません。Office ファイルを PDF にできません。",
             "LibreOffice を導入する（場所は環境変数 SOFFICE_PATH でも指定できる）か、"
-            "PDF で保存し直して渡してください。--pdf-passthrough を外せば、"
+            "PDF で保存し直して渡してください。--route direct にすれば、"
             "文字と表だけの直接変換を試せます。")
     return soffice
 
