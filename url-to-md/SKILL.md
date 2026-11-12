@@ -1,208 +1,103 @@
 ---
 name: url-to-md
 description: >
-  URLを指定すると、Web上のページ・PDF・Microsoftドキュメント（docx/xlsx/pptx）・
-  YouTube動画を取得してMarkdownに変換するスキル。「このURLをMarkdownにして」
-  「URLの資料をmdに変換」「このWebページをMarkdownにして」
-  「リンク先のdocx/xlsx/pptxを変換して」「URLのPDFをマークダウンにして」
-  「YouTubeの動画をMarkdownにして」「動画の文字起こし／トランスクリプトをmdに」
-  などのフレーズが含まれる場合に使う。HTMLは本文抽出+画像の絶対URL化、
-  YouTubeは概要+字幕（タイムスタンプ付き）で完結し、PDF/Officeは図再現のため
-  pdf-to-md-ja スキルへ委譲する。Claude Code（ローカル環境）での実行を想定。
+  URL または手元・添付のファイル（html / pdf / docx / xlsx / pptx）と YouTube 動画を、
+  Markdown に変換するスキル。「このURLをMarkdownにして」「URLの資料をmdに変換」
+  「このWebページをMarkdownにして」「リンク先のdocx/xlsx/pptxを変換して」
+  「URLのPDFをマークダウンにして」「YouTubeの動画をMarkdownにして」
+  「動画の文字起こしをmdに」のほか、「この添付のpptxをMarkdownにして」
+  「手元のxlsxをmdに」のように添付ファイル・手元のファイルを渡されたときにも使う。
+  HTMLは本文抽出+画像の絶対URL化、YouTubeは概要+字幕で完結する。
+  PDF/Officeは図の再現のため、PDF経由なら pdf-to-md-ja に委譲し、
+  PDF化できない環境ではスクリプトで直接変換する。
+  URLの取得ができないときは、変換を始めずに理由を返して終了する。
 ---
 
-# url-to-md — URL指定でドキュメントをMarkdown変換
+# url-to-md — URL・ファイルを Markdown に変換する
 
-URLを受け取り「取得 → 形式判定 → 変換」を行う。形式特性に応じて3系統に分岐する：
+**このファイルは入口**。次の順で進める。手順の本文は `workflows/` にある。
+以降、`<SKILL_DIR>` は **この SKILL.md があるフォルダ**の絶対パス、
+スクリプトは `<SKILL_DIR>/scripts/` にある。
 
-- **HTML** … 本文抽出 + 画像の絶対URL化で完結（PDF変換は不要）
-- **YouTube** … yt-dlpで概要（説明欄全文）+ 字幕を取得しMarkdownに（完結）
-- **PDF / Office（docx/xlsx/pptx）** … PDFに正規化して pdf-to-md-ja へ委譲（図を再現）
+## 守ること
 
-実行環境は **Claude Code（Ubuntu等のローカル）** を想定。取得は curl。
-claude.ai上で curl が制限される場合は web_fetch ツールで代替する。
+1. **スクリプトを書き換えない。** 失敗したら、下の「失敗したとき」の表に従う。
+   表に無い失敗は、書き換えずにユーザーへ報告して止まる（書き換えが必要なら、
+   それはスキルの不具合として報告する）。
+2. **オプションは `--help` が正。** 使う前に、そのスクリプトの `--help` を 1 回読む。
+   この SKILL.md とワークフローには、オプションの一覧を書かない。
+3. 足りない依存を入れてよいのは、**ユーザーに確認してから**。
 
-## 処理の全体像
-
-```
-URL ─┬─ youtube URL             → youtube_to_md.py（curl不使用）→ 概要+Transcript（完結）
-     └─curl──> 形式判定
-               ├─ html              → 本文抽出+画像絶対URL化 → Markdown（完結）
-               ├─ pdf               → 保存            ┐
-               ├─ docx/xlsx/pptx    → sofficeでPDF化  ┴→ pdf-to-md-ja へ委譲
-               └─ 旧 doc/xls/ppt    → sofficeで新形式へ変換後、上へ
-```
-
-図の扱いは **非対称**。これは媒体特性による自然な設計：
-- HTMLの画像は元々Web上にあり**URLが生きている** → 絶対URL参照で十分
-- Office/PDFの図はファイル内に埋もれ**参照先が無い** → PDF経由でSVG/Mermaid再現
-
-## 対応範囲
-
-| 入力 | 処理 | 図・表 |
-|------|------|--------|
-| YouTube動画 | yt-dlpで概要+字幕取得 → 段落+タイムスタンプ | 図なし（テキストのみ） |
-| Webページ(HTML) | 本文抽出 + 画像src絶対URL化 | 表○ / 図は `![alt](絶対URL)` |
-| PDF | 保存 → pdf-to-md-ja委譲 | 図のSVG/Mermaid再現○ |
-| docx/xlsx/pptx | LibreOfficeでPDF化 → pdf-to-md-ja委譲 | 図のSVG/Mermaid再現○ |
-| 旧 doc/xls/ppt | LibreOfficeで新形式へ変換後、上へ | 同上 |
-
-## 準備（初回のみ）
-
-**uv がある場合（推奨）**: 追加インストール不要。各スクリプトは PEP 723 で
-依存を宣言しており、`uv run scripts/xxx.py` が依存を自動解決する。
-
-**uv が無い場合（pip フォールバック）**:
+## Step 0. 環境を確認する（最初に 1 回）
 
 ```bash
-pip install "markitdown[docx]" trafilatura beautifulsoup4 yt-dlp --break-system-packages
+<RUN> <SKILL_DIR>/scripts/fetch_convert.py --check-env
 ```
 
-いずれの場合も soffice(LibreOffice) と curl はシステムに用意
-（Officeを扱う場合 soffice 必須）。uv の有無は `command -v uv` で判定できる。
+`<RUN>` は、使えるものを次の順で選ぶ: `uv run` → `python` → `python3` → `py`。
+`python` 系は 3.10 以上が必要（`--check-env` の `python` の行で分かる）。
+`uv run` なら依存は自動で入る。`python` 系のとき、足りない依存は
+`--check-env` の `py:` の行に「無し」と出るので、ユーザーに確認して `pip install` する。
 
-## ワークフロー
+結果で経路を決める。
 
-### Step 0. YouTube — 概要+トランスクリプト（完結経路）
+| 状況 | 進め方 |
+|---|---|
+| スクリプトを実行できる | 下の「モード」へ |
+| スクリプトを実行できない（Claude.ai でコード実行が使えない など） | `workflows/file.md` の「Claude が直接読む」へ。**先に、図は再現しないことと、URL は取得できないことを伝える** |
 
-YouTube URL（youtube.com/watch・youtu.be・shorts・live・embed）は
-fetch_convert.py を通さず専用スクリプトで直接変換する:
+通信できるかは `--check-env` では分からない。URL を取得して `NO_NETWORK` が返ったら、
+**変換を始めず**、下の形で返して終了する。
 
-```bash
-uv run scripts/youtube_to_md.py "<YouTube URL>" -o video.md
-# uvが無い場合: python3 scripts/youtube_to_md.py "<YouTube URL>" -o video.md
+## モード
+
+| 依頼・入力 | 読むファイル |
+|---|---|
+| YouTube の URL | `workflows/youtube.md` |
+| html・pdf・docx・xlsx・pptx の URL | `workflows/url.md` |
+| 添付・手元のファイル | `workflows/file.md` |
+| docx / xlsx / pptx を**直接変換**で Markdown にしたとき（`ROUTE=direct`） | 上に加えて `workflows/office-direct.md` |
+| PDF が得られたとき（`ROUTE=pdf` ほか） | `pdf-to-md-ja` スキルに PDF のパスを渡す |
+| 変換後の仕上げ（フロントマター・確認） | `workflows/finish.md` |
+
+## 失敗したとき
+
+スクリプトは、失敗すると標準エラーの最後の 3 行に `[stop]` 理由・`[next]` 次の手段・
+`REASON=<理由コード>` を出す（トレースバックは出ない）。終了コードは `--help` の通り。
+`REASON=` を見て、次の表で動く。
+
+| REASON | 動き |
+|---|---|
+| `NO_NETWORK` | 終了。ファイルとして渡してもらう |
+| `UNSUPPORTED_SCHEME` | 終了。http / https の URL を頼む |
+| `HTTP_ERROR` | 終了。URL を確認してもらう |
+| `LOGIN_REQUIRED` | 終了。保存したファイルを渡してもらう。**ユーザーが明示したときだけ** `--force` で続行 |
+| `JS_RENDERED` | 同上 |
+| `EMPTY_CONTENT` | 終了。ファイルが空かを確認してもらう |
+| `FETCH_FAILED` | 終了。URL・通信を確認してもらう |
+| `CONVERT_FAILED` | 終了。変換できなかった旨と `[stop]` の文を伝える |
+| `UNSUPPORTED_FORMAT` | 終了。対応形式（html・pdf・docx・xlsx・pptx）を伝える |
+| `LEGACY_NEEDS_SOFFICE` | 終了。LibreOffice を入れるか、新しい形式で保存し直してもらう |
+| `MISSING_TOOL` | 何が無いかを伝え、**ユーザーに確認してから**入れる。入れられなければ終了 |
+| `UNEXPECTED` | スクリプトは直さず、標準エラーを添えて報告して終了 |
+
+終了するときは、**ファイルを書かずに**、返答を次の形にする。
+
+```
+変換できませんでした。
+- 理由: <理由コード> — <日本語の理由>
+- 対象: <URL またはファイル名>
+- 次の手段: <1〜2 個>
 ```
 
-出力: `# タイトル` → `## 概要`（説明欄全文）→ `## Transcript`
-（段落頭に `**[MM:SS]**` タイムスタンプ）。
+## 変換の種類（frontmatter の `conversion`）
 
-字幕の選択ルール（スクリプトが自動判断）:
-- 動画の元言語の手動字幕 > 元言語の自動生成字幕。**翻訳字幕は使わない**
-- 字幕が無い動画は概要のみ出力し「字幕がありません」注記が付く
-
-変換後は Step 5 でフロントマターを付与する（`--format youtube` と
-`--channel` `--published` `--duration` を指定）。
-
-### Step 1. 取得と形式判定
-
-```bash
-uv run scripts/fetch_convert.py "<URL>" -o output.md          # html等そのまま変換
-# uvが無い場合: python3 scripts/fetch_convert.py "<URL>" -o output.md
-uv run scripts/fetch_convert.py "<URL>" --pdf-passthrough     # pdf/officeはPDF化して委譲
-# uvが無い場合: python3 scripts/fetch_convert.py "<URL>" --pdf-passthrough
-```
-
-fetch_convert.py の動作：
-0. YouTube URL なら curl を使わず、案内を表示して即座に終了する（Step 0 参照）
-1. curl -sIL でヘッダの Content-Type を取得
-2. URL末尾の拡張子 + Content-Type で形式判定（detect_format）
-3. 形式で分岐（下記）
-
-### Step 2. HTML — 本文抽出 + 画像絶対URL化（完結経路）
-
-scripts/html_to_md.py が担う。PDF変換は不要。
-
-```bash
-uv run scripts/html_to_md.py "<URL>" -o out.md
-# uvが無い場合: python3 scripts/html_to_md.py "<URL>" -o out.md
-```
-
-処理内容：
-1. **画像src等を絶対URL化**：BeautifulSoup + urljoin で相対・ルート相対・
-   プロトコル相対の全パターンを絶対URLに変換。data: はそのまま
-2. **本文抽出**：trafilaturaでナビ・広告・関連記事・フッターを除去
-   （favor_precision=True, deduplicate=True）。**完全HTML文書のまま渡す**こと
-   （<main>等で切り出すと本文判定が効かず None になる）
-3. **フォールバック**：trafilaturaが本文も見出しも画像も取れなかった時のみ
-   markitdownで全体変換（ノイズ混入の可能性を明記）
-4. **重複除去**：連続する長い重複段落を後処理で除去
-
-結果、図は `![alt](https://…)` のフルパス参照となり、別環境でMarkdownを開いても
-画像が表示される。
-
-### Step 3. PDF / Office — PDFに正規化して委譲
-
---pdf-passthrough を付けると、PDFと判定された場合は保存のみ、
-docx/xlsx/pptx は **LibreOfficeでPDF化** し、いずれもPDFパスをstdoutに返す。
-
-```bash
-PDF=$(uv run scripts/fetch_convert.py "<URL>" --pdf-passthrough -o work)
-# uvが無い場合: PDF=$(python3 scripts/fetch_convert.py "<URL>" --pdf-passthrough -o work)
-# soffice --headless --convert-to pdf を内部実行（Officeの場合）
-# → $PDF を pdf-to-md-ja スキルで変換（pdfinfo/pdfimages検証 → 図のSVG/Mermaid化）
-```
-
-委譲インターフェースは **PDFファイルパス1つ**（疎結合）。
-受け取った pdf-to-md-ja がStep1以降を実行し、図つきMarkdownを生成する。
-
-### Step 4. 旧Office形式（doc/xls/ppt）
-
-委譲の前に新形式へ変換：
-```bash
-soffice --headless --convert-to docx old.doc
-```
-
-### Step 5. YAMLフロントマターを付与
-
-変換済みMarkdownの先頭に、出典・メタ情報のヘッダーを付ける。
-
-```bash
-uv run scripts/add_frontmatter.py body.md \
-    --url "<URL>" --format <html|pdf|docx|xlsx|pptx|youtube> \
-    --title "<タイトル>" --summary "<200字以内の要約>" -o final.md
-# uvが無い場合: python3 scripts/add_frontmatter.py body.md \
-#     --url "<URL>" --format <html|pdf|docx|xlsx|pptx|youtube> \
-#     --title "<タイトル>" --summary "<200字以内の要約>" -o final.md
-```
-
-ヘッダー項目：
-
-```yaml
----
-title: 文書タイトル
-source_url: 変換元URL
-source_format: html|pdf|docx|xlsx|pptx|youtube
-channel: チャンネル名            # youtubeのみ（任意）
-published: 公開日 YYYY-MM-DD    # youtubeのみ（任意）
-duration: "12:34"               # youtubeのみ（任意）
-has_figures: true|false        # SVG/Mermaid/画像を含むか（自動判定）
-summary: 200字以内の要約
-retrieved_at: ISO8601日時       # 自動
----
-```
-
-**自動で埋まる項目**：`source_url` `source_format` `has_figures` `retrieved_at`。
-これらは引数とスクリプトのみで確定する。
-
-**内容に依存する項目**：`title` `summary`。
-`--title` `--summary` を省略すると、本文先頭の見出しと先頭段落200字から
-機械抽出する（フォールバック）。ただし**より的確なタイトル・要約が望ましいので、
-Claudeが本文を読んで `--title` `--summary` を明示指定することを推奨**する。
-要約は200字以内（超過分は自動で丸める）。
-
-二重付与防止：既にフロントマターがあるMarkdownには付与しない（警告のみ）。
-
-### Step 6. 出力の確認
-
-- HTMLは本文のみか（ナビ・広告が残っていないか）、画像URLが絶対か
-- 画像URLは実際に到達可能か（リンク切れでないか）
-- Office/PDFは図がSVG/Mermaid/抽出画像として再現されているか
-- xlsxはシート見出し、pptxはスライド番号コメントで区切られる
-- YouTubeは概要が全文入っているか、Transcriptの段落頭にタイムスタンプがあるか
-
-## やってはいけないこと
-
-- HTMLを <main> 等で切り出してからtrafilaturaに渡す
-  （本文判定が効かず None になる。文書全体を渡す）
-- HTMLの画像を相対URLのまま残す（別環境でリンク切れ。必ず絶対URL化）
-- PDF/Officeの図をmarkitdown簡易変換で済ませる（図が失われる。PDF経由で委譲）
-- Office→PDFのsoffice出力先で同名PDFが衝突しないよう、作業ディレクトリを分ける
-- 取得失敗・空ファイルのまま変換を続けない（curlのreturncodeとサイズを確認）
-- YouTubeのwatchページをhtml_to_md.py（trafilatura）で処理しない
-  （JSレンダリングのため本文が取れない。必ずyoutube_to_md.pyを使う）
-- 翻訳字幕を黙って使わない（元言語の手動字幕>自動生成字幕のみ）
+| 値 | 意味 |
+|---|---|
+| `pdf` | PDF 経由（pdf-to-md-ja）で作った |
+| `direct` | スクリプトで直接変換した |
+| `model-read` | 添付を Claude が直接読んで起こした（図は再現していない） |
 
 ## 関連スキル
 
-- **pdf-to-md-ja**: PDF→Markdown。目次・表の保持、図のSVG/Mermaid再現。
-  本スキルはPDF/Office（PDF化後）の処理をこれに委譲する。
+- **pdf-to-md-ja**: PDF → Markdown。目次・表の保持、図の SVG / Mermaid 再現。

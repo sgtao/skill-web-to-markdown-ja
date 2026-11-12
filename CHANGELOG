@@ -8,6 +8,38 @@
 v0.0.1 から数え直した。
 
 ---
+## [v0.0.4] - 2026-11-12
+
+### 変更｜`url-to-md/SKILL.md` を `--help` 確認型に書き直し、`workflows/` に分けた（P5）
+
+- **入口の SKILL.md（約 100 行）**: 守ること・Step 0（環境の確認）・モード表・失敗したときの表・終了メッセージの形・`conversion` の値だけを書く
+- **「スクリプトを書き換えない」を明記**。表に無い失敗は、書き換えずに報告して止まる
+- **オプションの一覧を SKILL.md から外した**。「使う前にそのスクリプトの `--help` を 1 回読む」を手順にした（オプションの正は `--help`）
+- **Step 0 で `--check-env` を 1 回実行**。`uv run` → `python` → `python3` → `py` の順で、使えるものを選ぶ。コマンドはスキルのフォルダからの絶対パスで書く
+- **終了メッセージの形**（理由コード＋理由＋対象＋次の手段）と、理由コードごとの対応表を追加。通信できないときは、変換を始めずに終了する
+- **Claude.ai**: スクリプトを実行できないときは、添付を Claude が直接読んで Markdown にする（`conversion: model-read`）。図は再現しないことを最初に伝える
+- 「web_fetch で代替」の文を削除。`--pdf-passthrough` ではなく `--route` で書く
+- `description` に、添付ファイル・手元のファイルでも起動することを追加
+- 直接変換（`ROUTE=direct`）のときの手順（グラフの差し込み・画像を見て起こす・再現できなかったものの明記）を `workflows/office-direct.md` に書いた
+
+### 追加｜SKILL.md と `--help` の照合テスト（`tests/test_skill_md.py`）
+
+- SKILL.md・`workflows/` に書いたオプション名が、すべて `--help` にあること
+- 理由コードと `conversion` の値が、コードと SKILL.md で一致すること
+- 参照しているファイル・スクリプトが存在すること
+
+### 既知の問題
+
+- Windows の実機・Claude.ai では未確認（1 回目の実機確認で行う）
+- `pdf-to-md-ja/SKILL.md`、README の `pip install "markitdown[docx]"` は古いまま（P4・P6 で直す）
+
+### ファイル構成の変更
+
+- `url-to-md/SKILL.md`（書き直し）
+- `url-to-md/workflows/`（新設: `url.md` `file.md` `youtube.md` `office-direct.md` `finish.md`）
+- `tests/test_skill_md.py`（新設）
+
+---
 ## [v0.0.3] - 2026-11-12
 
 ### 追加｜Office を、soffice が無くても必ず最後まで変換する（`fetch_convert.py`）
