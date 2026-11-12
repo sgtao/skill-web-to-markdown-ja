@@ -29,12 +29,12 @@ flowchart LR
   C --> E[人材獲得・育成]
 ```
 
-循環（今回の「自律と信頼」のような双方向）：
+循環（A と B が互いに働きかける双方向）：
 
 ```mermaid
 flowchart LR
-  社員 -->|新たな行動を起こす| FUJITSU
-  FUJITSU -->|成長を促す| 社員
+  A[項目A] -->|働きかける| B[項目B]
+  B -->|返す| A
 ```
 
 - ノードラベルは元の文言をそのまま使う
@@ -49,12 +49,12 @@ flowchart LR
 SVG `donut_chart` を使う（pieは非対応）。
 
 ```mermaid
-pie title 仕向先別売上収益
-  "日本" : 64.9
-  "欧州" : 18.7
-  "アジアパシフィック" : 7.3
-  "アメリカ" : 5.4
-  "東アジア" : 3.5
+pie title 区分別の構成比
+  "区分A" : 64.9
+  "区分B" : 18.7
+  "区分C" : 7.3
+  "区分D" : 5.4
+  "区分E" : 3.5
   "その他" : 0.2
 ```
 
@@ -68,7 +68,7 @@ pie title 仕向先別売上収益
 
 ```mermaid
 timeline
-  title 会社沿革
+  title 沿革
   1935 : 創立
   1992 : 中国拠点設立
   2001 : インド拠点設立
@@ -85,16 +85,13 @@ timeline
 
 ```mermaid
 mindmap
-  root((Fujitsu Uvance))
-    Vertical Areas
-      Sustainable Manufacturing
-      Consumer Experience
-      Healthy Living
-      Trusted Society
-    Horizontal Areas
-      Digital Shifts
-      Business Applications
-      Hybrid IT
+  root((テーマ))
+    分類1
+      項目1-1
+      項目1-2
+    分類2
+      項目2-1
+      項目2-2
 ```
 
 インデントで階層を表す。中心ノードは `(( ))` で囲む。
@@ -137,7 +134,7 @@ quadrantChart
    → `scripts/svg_figures.py` の `flow_cycle` 等
 
 3. **ラスタ化**：独自デザインで図の再現自体が困難、地図など
-   → `pdftoppm -png -r 150 -f N -l N`
+   → `scripts/pdf_render.py`（`--pages N --dpi 150`）でページを画像にする
 
 判断の軸は一貫して **「図にして認識・理解しやすくなるか」**。
 Mermaidで素直に描けるならMermaid、量の正確さが要るならSVG、

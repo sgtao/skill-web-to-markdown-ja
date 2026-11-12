@@ -9,7 +9,9 @@ import pytest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SCRIPTS = os.path.join(ROOT, "url-to-md", "scripts")
 FIXTURES = os.path.join(ROOT, "tests", "fixtures")
+PDF_SCRIPTS = os.path.join(ROOT, "pdf-to-md-ja", "scripts")
 sys.path.insert(0, SCRIPTS)
+sys.path.insert(0, PDF_SCRIPTS)
 
 
 MINIMAL_PDF = (b"%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n"
@@ -94,3 +96,8 @@ def scripts_dir():
 @pytest.fixture(scope="session")
 def fixtures_dir():
     return FIXTURES
+
+
+@pytest.fixture(scope="session")
+def pdf_scripts_dir():
+    return PDF_SCRIPTS

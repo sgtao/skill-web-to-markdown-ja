@@ -8,6 +8,53 @@
 v0.0.1 から数え直した。
 
 ---
+## [v0.0.5] - 2026-11-12
+
+### 追加｜`pdf-to-md-ja` を、poppler・cairosvg が無い環境でも動かす（P4）
+
+- **`scripts/pdf_probe.py`**（新設）: PDF の素性を JSON で出す。poppler（`pdfinfo` `pdffonts` `pdfimages`）があればそれを使い、無ければ `pypdf` で、同じ項目（ページ数・大きさ・作成元・文字の有無・画像）を出す。
+  `hints`（`slide_deck` `slide_size` `document_size` `no_text` `has_raster_images`）、どの道具で調べたかの `backends`、調べられなかったことの `degraded` を含む。
+  `--text` で本文も出せる（`pdftotext` → `pdfplumber` → `pypdf`）。失敗は理由コード（`PDF_UNREADABLE` `PDF_ENCRYPTED` `FILE_NOT_FOUND` `MISSING_TOOL`）つきで、トレースバックは出さない
+- **`scripts/pdf_render.py`**（新設）: ページを PNG にする（`pdftoppm`、無ければ `pypdfium2`）。`--extract-images` で埋め込みのラスタ画像を取り出す（`pdfimages`、無ければ `pypdf` と Pillow）。標準エラーの `RENDERER=` / `EXTRACTOR=` で、どちらを使ったかが分かる
+- **`svg_figures.py --render`**: SVG を PNG にして目視確認する。`cairosvg` が無いときは `REASON=MISSING_TOOL`（終了コード 4）で止まる。その場合は目視を省き、`warnings` が空であることで代える（J-2）
+
+### 変更｜`svg_figures.py`
+
+- ラベルを XML エスケープする（`&` `<` を含むと壊れていた）
+- `viewBox` を中身から計算する（`width` / `height` を渡したときは、その枠に対してはみ出しを検査する）
+- `%` は自動で付けず、`unit` で指定する（これまでは合計が 100 か float だと付いた）
+- バブルの重なり、ラベルが円・ノードに入りきらない可能性、ドーナツ中央の文字が穴に入らない可能性を `warnings` に出す
+- `bubble_chart` の docstring を実装に合わせた（`warnings` を返す）。`flow_cycle` の「循環」を引数 `center_label` に
+- 1 項目だけのドーナツ、不正な値（空・負・合計 0）の扱いを決めた
+- 事例に由来する既定色・サンプルを、一般的なものに変えた
+
+### 変更｜`pdf-to-md-ja/SKILL.md` と `references/`
+
+- 実行環境（`<SKILL_DIR>` `<RUN>`）、「スクリプトを書き換えない」「オプションは `--help` が正」を追加
+- Step 1 を `pdf_probe.py` の出力（`hints`）に合わせて書き直し、Step 2・3 の `pdftotext` `pdftoppm` `pdfimages` を新しいスクリプトに置き換えた
+- 図の検証ループを、`warnings` の確認 → `--render`（あるときだけ）→ 省いたことを報告、に変えた。「縮退したときの報告」の節を追加
+- `references/` のコマンド例から `/tmp` をなくし、事例に由来する例（社名・社員 ⇄ 会社 など）を一般的なものに変えた。SKILL.md の「Mermai」の脱字を直した
+
+### 追加｜テスト（`tests/test_pdf.py` `tests/pdf_fixtures.py`）
+
+- poppler が無い状態を模して、`pdf_probe`・`pdf_render` の Python ライブラリの経路を通す
+- `svg_figures.py` の、エスケープ・`viewBox`・`unit`・はみ出し・重なり・面積比・不正な値
+- `pdf-to-md-ja` の SKILL.md と `references/` に書いたオプション名が `--help` にあること、`/tmp` や `python3` 決め打ちが残っていないこと
+
+### 既知の問題
+
+- 実物の poppler がある環境で、`pdf_probe.py` の poppler 経路（`pdfinfo` `pdffonts` `pdfimages` の出力の解析）は、実機では未確認（この Mac には poppler が無い。出力の形式は poppler の仕様から書いた）
+- `pdf_probe.py` の画像一覧は、pypdf 経路では位置が出ない。ベクター図は両方とも出ない
+- `README.md` の `pip install "markitdown[docx]"` は古いまま（P6 で直す）
+
+### ファイル構成の変更
+
+- `pdf-to-md-ja/scripts/pdf_probe.py`（新設）・`pdf_render.py`（新設）・`svg_figures.py`（書き直し）
+- `pdf-to-md-ja/SKILL.md`・`references/svg_logic.md` `mermaid_patterns.md`（変更）
+- `tests/test_pdf.py`・`tests/pdf_fixtures.py`（新設）、`tests/conftest.py`
+- `pyproject.toml`（`pypdf` `pdfplumber` `pypdfium2` `pillow` を追加。版を 0.0.5 に）、`uv.lock`
+
+---
 ## [v0.0.4] - 2026-11-12
 
 ### 変更｜`url-to-md/SKILL.md` を `--help` 確認型に書き直し、`workflows/` に分けた（P5）

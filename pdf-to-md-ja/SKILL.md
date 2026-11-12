@@ -35,6 +35,19 @@ PDFを「読み取れる構造」に分解し、Markdownへ変換する。中心
 取得・保存し、そのローカルパスがこのスキルへ委譲される。どちらの経路でも
 Step 1以降の処理は同じ。
 
+## 守ること（実行環境）
+
+- `<SKILL_DIR>` は **この SKILL.md があるフォルダ**の絶対パス。スクリプトは `<SKILL_DIR>/scripts/`。
+- `<RUN>` は、使えるものを `uv run` → `python` → `python3` → `py` の順に選ぶ（`python` 系は 3.10 以上）。
+  `uv run` なら依存（pypdf・pdfplumber・pypdfium2・pillow）は自動で入る。
+  それ以外で足りないときは、**ユーザーに確認してから** `pip install` する。
+- **スクリプトを書き換えない。** 失敗したら標準エラーの最後の 3 行（`[stop]` 理由・`[next]` 次の手段・
+  `REASON=<理由コード>`）を読む。直せない失敗は、書き換えずにユーザーへ報告して止まる。
+- **オプションは `--help` が正。** 使う前にそのスクリプトの `--help` を 1 回読む。
+- poppler（`pdfinfo` `pdftoppm` など）や `cairosvg` が無い環境が普通にある。
+  スクリプトは poppler があれば使い、無ければ Python のライブラリに切り替える。
+  **何に切り替えたか・省いたことは、返答に必ず書く**（下の「縮退したときの報告」）。
+
 ## ワークフロー
 
 ### Step 1. PDFの素性を機械的に調べる（必須）
@@ -42,34 +55,48 @@ Step 1以降の処理は同じ。
 憶測の前に必ず実行する。これが変換戦略の起点になる。
 
 ```bash
-pdfinfo input.pdf       # ページ数・サイズ・作成元（PowerPoint由来か等）
-pdffonts input.pdf      # テキストレイヤーの有無（空ならスキャン/ラスタ）
-pdfimages -list input.pdf | head -30   # ラスタ画像の有無と位置
+<RUN> <SKILL_DIR>/scripts/pdf_probe.py --help
+<RUN> <SKILL_DIR>/scripts/pdf_probe.py input.pdf
 ```
 
-判断の指針：
+JSON が返る。見る項目: `pages`（ページ数）・`page_size`・`creator` / `producer`（作成元）・
+`has_text`（文字があるか）・`images`（埋め込みのラスタ画像）・`hints`・`backends`・`degraded`。
 
-| 観測 | 意味 | 方針 |
+判断の指針（`hints` の値と、元になる観測）:
+
+| 観測（`hints`） | 意味 | 方針 |
 |------|------|------|
-| Creator が PowerPoint / Keynote | スライドデッキ。図はベクターの可能性大 | 各ページを画像として視覚解析、図は数値からSVG再構成 |
-| ページサイズ 960×540 / 720×540 等 | 16:9 / 4:3 スライド | 同上 |
-| `pdffonts` が空 | スキャンPDF。テキスト抽出不可 | `pdftoppm`でラスタ化しOCR or Vision |
-| `pdffonts` に多数のフォント、A4縦 | 一般文書・レポート | テキスト抽出を主軸、図のある頁だけ視覚解析 |
-| `pdfimages -list` に大きなrgb画像 | 写真・地図がラスタ埋め込み | `pdfimages`で抽出可能 |
-| 図があるのに `pdfimages` に出ない | ベクター描画 | 抽出不可。数値からSVG再構成 or `pdftoppm`で頁ラスタ化 |
+| `slide_deck`（作成元が PowerPoint / Keynote / Impress など） | スライドデッキ。図はベクターの可能性大 | 各ページを画像として視覚解析、図は数値からSVG再構成 |
+| `slide_size`（16:9 / 4:3 の横長） | スライド | 同上 |
+| `no_text`（`has_text` が false） | スキャンPDF。テキスト抽出不可 | ページを画像にして（Step 2）Visionで読む |
+| `document_size`（A4・Letter の縦）で `has_text` が true | 一般文書・レポート | テキスト抽出を主軸、図のある頁だけ視覚解析 |
+| `has_raster_images`（`images` に大きな画像） | 写真・地図がラスタ埋め込み | `pdf_render.py --extract-images` で取り出せる |
+| 図があるのに `images` に出ない | ベクター描画 | 抽出不可。数値からSVG再構成 or ページを画像にして埋め込む |
+
+`degraded` が空でないときは、poppler が無く Python のライブラリで調べている。
+文字の有無・画像の数は分かるが、フォントの一覧と画像の位置は出ない。
 
 ### Step 2. 文書タイプ別に本文を変換
 
-**スライドデッキの場合**：各ページが視覚主体。PDFはコンテキストに画像として
-読み込まれるので、ページ画像を直接見てMarkdown化する。テキスト抽出はレイアウトを
-失うため補助に留める。
+**ページを画像にする**（スライドデッキ・スキャン・図のある頁）:
+```bash
+<RUN> <SKILL_DIR>/scripts/pdf_render.py --help
+<RUN> <SKILL_DIR>/scripts/pdf_render.py input.pdf --pages 1-5 --dpi 150 --outdir <作業フォルダ>
+```
+書き出した PNG のパスが 1 行ずつ返る。標準エラーの `RENDERER=` で、pdftoppm と pypdfium2 のどちらを使ったかが分かる。
+`--outdir` には、**作業用のフォルダ**を指定する（OS の一時フォルダなど。Unix 系の固定の一時フォルダは Windows に無いので決め打ちしない）。
+
+**スライドデッキの場合**：各ページが視覚主体。ページ画像を直接見てMarkdown化する。
+テキスト抽出はレイアウトを失うため補助に留める。
 
 **一般文書・レポートの場合**：テキスト抽出を主軸にする。
 ```bash
-pdftotext -layout input.pdf output.txt   # 段組み・空間配置を保持
+<RUN> <SKILL_DIR>/scripts/pdf_probe.py input.pdf --text > output.txt   # ページごとに <!-- page N --> を付けて出す
 ```
-罫線のあるテーブルは `pdfplumber` の `extract_tables()` が有効。罫線のない
-デザイン表（スライドに多い）は抽出できないので、視覚解析でセル構造を読む。
+標準エラーに `pdftotext が無いので … で本文を取り出した` と出たら、段組みの再現が劣る。
+そのページは、ページ画像を見て直す。
+罫線のない表（スライドに多い）は文字列から取り出せないので、視覚解析でセル構造を読む。
+罫線のある表も、ページ画像と見比べて数値を確かめる。
 
 **変換ルール（共通）**：
 
@@ -80,7 +107,7 @@ pdftotext -layout input.pdf output.txt   # 段組み・空間配置を保持
 | 2列以上の構造化データ・表 | Markdownテーブル |
 | 引用・パーパス等の強調文 | `>` ブロック引用 |
 | 数値図（グラフ・バブル・フロー） | SVG再現（Step 3） |
-| 写真・地図（ラスタ） | `pdfimages`抽出（Step 3） |
+| 写真・地図（ラスタ） | `pdf_render.py --extract-images` で抽出（Step 3） |
 | ロゴ・英語表記 | そのまま記述 |
 
 目次構造は必ず保持する。先頭にアンカーリンク付きの目次を置くと、長い文書で有用。
@@ -140,7 +167,7 @@ Visionに次を問うと判定がブレない（→ 詳細プロンプトは `re
 1. 頻出5記法で表現できる → それを使う（最優先）
 2. 頻出では無理だが他のMermaid記法（sequence／state／gantt／er等）が合う → それを使う
 3. Mermaidでうまく描けない複雑な独自レイアウト → SVG（`flow_cycle`等）
-4. 図そのものの再現が困難（独自デザイン・地図） → `pdftoppm`でラスタ化して埋め込み
+4. 図そのものの再現が困難（独自デザイン・地図） → `pdf_render.py` でページをラスタ化して埋め込み
 
 Mermaid記法の書き方・具体例は `references/mermaid_patterns.md` を参照。
 
@@ -148,33 +175,34 @@ Mermaid記法の書き方・具体例は `references/mermaid_patterns.md` を参
 
 | 種類 | 手段 |
 |------|------|
-| ラスタ写真・地図 | `pdfimages -png -f N -l N` で抽出 |
-| ベクター図で再現困難 | `pdftoppm -png -r 150 -f N -l N` で頁ラスタ化 |
+| ラスタ写真・地図 | `pdf_render.py input.pdf --pages N --extract-images --outdir <作業フォルダ>` で抽出 |
+| ベクター図で再現困難 | `pdf_render.py input.pdf --pages N --dpi 150 --outdir <作業フォルダ>` で頁ラスタ化 |
 
 #### Mermaid と SVG の使い分けの本質
 
-- **構造・関係が主題 → Mermai**：ノードとエッジが伝わればよく、正確な座標・面積は不要。
+- **構造・関係が主題 → Mermaid**：ノードとエッジが伝わればよく、正確な座標・面積は不要。
   自動レイアウトが活きる。Markdownにそのまま埋め込め、GitHubでも描画される。
 - **量の正確さが主題 → SVG**：面積・長さを数値どおりに見せる必要がある。
   自動レイアウトでは不正確。数値から計算するSVGが適切。
 
-スクリプトの詳しい使い方は `references/svg_logic.md` を参照。
+SVG の関数の呼び方と、各図がなぜそう描くかは `references/svg_logic.md` を参照。
 特にSVGグラフは **Visionに「それっぽいSVG」を書かせない** こと。角度や半径がズレる。
 数値だけ認識し、描画は必ずコードで行う。一方Mermaidは構造の読み取りをVisionに任せてよい
 （ノード名・接続関係の抽出はVisionが得意）。
 
 #### 図の検証ループ（重要）
 
-生成したSVGは必ずPNG化して目視確認する。「コードが通った」だけで終わらせない。
+「コードが通った」だけで終わらせない。SVG 生成関数は `(svg, warnings)` を返す。
 
-```bash
-python3 -c "import cairosvg; cairosvg.svg2png(url='fig.svg', write_to='fig.png', output_width=700)"
-```
-
-PNGをReadして、ラベルの重なり・はみ出し・配置ずれを目で確認する。
-ドーナツのラベルは小セグメントが密集すると重なるため、`svg_figures.py` には
-**ラベル衝突回避**（左右グループ別に縦方向ずらし＋折れ線リーダー）が実装済み。
-生成時に間隔チェックが走り、`✅ OK` / `❌ NG` を出力する。NGなら配置を調整する。
+1. **`warnings` を必ず見る**。間隔不足・枠からのはみ出し・バブルの重なり・ラベルが入りきらない可能性が
+   ここに出る。空でなければ、配置・数値・枠を直して作り直す。
+2. **目視確認**（`cairosvg` があるときだけ）:
+   ```bash
+   <RUN> <SKILL_DIR>/scripts/svg_figures.py --render fig.svg --png fig.png
+   ```
+   PNG を見て、ラベルの重なり・はみ出し・配置ずれを確かめる。
+   終了コード 4（`REASON=MISSING_TOOL`）なら `cairosvg` が無い。**目視は省き**、1 の `warnings` が
+   空であることで代える。そのうえで、返答に「目視確認は省略した」と書く。
 
 注意：変換環境に日本語フォントが無いとPNG上で日本語が豆腐（□）になるが、これは
 レンダラの問題でSVG自体は正しい。重なり等のレイアウト検証には支障ない。
@@ -201,9 +229,20 @@ PNGをReadして、ラベルの重なり・はみ出し・配置ずれを目で�
 - 図付き版：`<元名>_with_figures.md`
 両方を出すか一方かはユーザーの要望に合わせる。図付き1ファイル完結が既定。
 
+## 縮退したときの報告
+
+次のどれかに当たったら、返答の最後に 1〜3 行で書く。
+
+- `pdf_probe.py` の `degraded` が空でない → 「poppler が無いので pypdf で調べた（フォントの一覧・画像の位置は無し）」
+- `pdf_render.py` が `RENDERER=pypdfium2` / `EXTRACTOR=pypdf` → 「pdftoppm / pdfimages が無いので Python のライブラリで代えた」
+- `--text` の標準エラーに警告が出た → 「段組みの再現が劣る。該当ページは画像を見て直した」
+- `cairosvg` が無かった → 「SVG の目視確認は省略した（`warnings` が空であることだけ確認）」
+
 ## やってはいけないこと
 
 - Step 1 を飛ばして「スライドだろう」と決め打ちする（ベクター/ラスタを未検証で進めない）
 - グラフのSVGをVisionに手書きさせる（角度・半径がズレる。数値→コードで描く）
-- SVG生成後に目視確認を省く（衝突・はみ出しを見逃す）
+- SVG生成後に `warnings` を見ない（衝突・はみ出しを見逃す）。目視を省いたときは、その旨を返答に書く
+- スクリプトを書き換える（失敗は報告して止まる）
+- 道具が無くて縮退したことを黙っている
 - 重いラスタを無確認でbase64埋め込みしてファイルを肥大化させる

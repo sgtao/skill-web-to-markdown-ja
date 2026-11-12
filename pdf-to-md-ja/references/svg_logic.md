@@ -4,10 +4,37 @@
 SKILL.md から必要に応じて参照する。
 
 ## 目次
+- [呼び方（スクリプトを書き換えずに使う）](#呼び方)
 - [ドーナツグラフ：角度の累積とラベル衝突回避](#ドーナツ)
 - [バブル図：面積を量に比例させる √変換](#バブル)
 - [フロー図：単純はSVG・複雑はMermaid](#フロー)
 - [ラスタ画像の抽出と埋め込み](#ラスタ)
+
+---
+
+## 呼び方
+
+`svg_figures.py` は import して使う。呼び出し用の小さなスクリプトを作業フォルダに書いて、
+`<RUN>`（SKILL.md の定義）で動かす。**`svg_figures.py` 自体は書き換えない。**
+
+```python
+import sys
+sys.path.insert(0, "<SKILL_DIR>/scripts")
+from svg_figures import donut_chart, bubble_chart
+
+svg, warnings = donut_chart(
+    [("項目A", 62.5, "#1A237E"), ("項目B", 37.5, "#1E88E5")],
+    center_top="合計", center_main="1,000", unit="%")   # % を付けたいときだけ unit を渡す
+print(warnings)                                          # 空でなければ直す
+with open("fig.svg", "w", encoding="utf-8") as f:       # SVG は UTF-8 で書く
+    f.write(svg)
+```
+
+- ラベルは自動でエスケープされる（`&` `<` を含んでよい）。
+- `viewBox` は中身から計算される。枠を決めたいときだけ `width` / `height` を渡す
+  （はみ出すと `warnings` に出る）。
+- `bubble_chart` は、バブルが重なると `warnings` に出る。座標 (x, y) を離して作り直す。
+- 目視確認は `svg_figures.py --render fig.svg --png fig.png`（`cairosvg` があるときだけ）。
 
 ---
 
@@ -24,7 +51,7 @@ SKILL.md から必要に応じて参照する。
 
 ### ラベル衝突回避
 弧の中点角だけでラベルを置くと、小さいセグメントが密集したときラベルが重なる。
-対策は2段階：
+対策は2段階（`%` は自動では付かない。割合のときは `unit="%"` を渡す）：
 
 1. **衝突回避（予防）**：ラベルを左右グループに分け、y座標順にソート。先頭を
    理想位置に固定し、以降は `y = max(理想y, 直前のy + 行高)` で押し下げる。
@@ -41,9 +68,9 @@ SKILL.md から必要に応じて参照する。
 
 円の見かけの大きさは半径ではなく**面積**で知覚される。半径を量に比例させると
 面積は量の二乗で効き、誇張される。よって面積を量比に一致させるには
-**半径 = R_MAX × √(量 / 最大量)** とする。
+**半径 = r_max × √(量 / 最大量)** とする。
 
-例：日本67,000とアメリカ4,000は約16.75倍。半径比は √16.75 ≈ 4.1倍になり、
+例：67,000 と 4,000 は約16.75倍。半径比は √16.75 ≈ 4.1倍になり、
 面積が正しく16.75倍に見える。
 
 配置座標 (x, y) はデータからは決まらない（地理的位置・レイアウト依存）ため、
@@ -63,10 +90,10 @@ Visionで読み取って渡す。ここは認識が残る部分。
 
 ```mermaid
 graph LR
-  HR[HR Vision] --> A[ありたい姿]
-  A --> C1[Challenge]
-  A --> C2[Collaboration]
-  A --> C3[Learning & Growth]
+  Root[全体像] --> A[方針]
+  A --> C1[施策1]
+  A --> C2[施策2]
+  A --> C3[施策3]
 ```
 
 「ノードとエッジは認識で取り出す／レイアウトはMermaidの自動配置に任せる」と
@@ -79,7 +106,7 @@ graph LR
 ### 抽出
 ラスタ画像（写真・地図など）は位置指定で抜き出せる。
 ```bash
-pdfimages -png -f 4 -l 4 input.pdf /tmp/img   # 4ページ目の画像をPNG出力
+<RUN> <SKILL_DIR>/scripts/pdf_render.py input.pdf --pages 4 --extract-images --outdir <作業フォルダ>   # 4ページ目の画像をPNG出力
 ```
 複数出るので、ファイルサイズで本命（大きいrgb画像）を見分ける。透過マスク
 （smask）が分離されて背景が黒くなることがあるので、Pillowで白背景化や
@@ -89,7 +116,7 @@ pdfimages -png -f 4 -l 4 input.pdf /tmp/img   # 4ページ目の画像をPNG出�
 matplotlib/PowerPoint等のベクター図は `pdfimages` に出てこない（画像オブジェクト
 ではなく描画命令のため）。その場合はページ全体をラスタ化する。
 ```bash
-pdftoppm -png -r 150 -f 4 -l 4 input.pdf /tmp/page
+<RUN> <SKILL_DIR>/scripts/pdf_render.py input.pdf --pages 4 --dpi 150 --outdir <作業フォルダ>
 ```
 
 ### 埋め込み

@@ -1,6 +1,6 @@
 [project]
 name = "skill-web-to-markdown"
-version = "0.0.4"
+version = "0.0.5"
 description = "Web上のコンテンツ（HTML/PDF/Office/YouTube）をMarkdownへ変換するClaude Code用スキルセット"
 requires-python = ">=3.10"
 dependencies = [
@@ -8,6 +8,10 @@ dependencies = [
     "trafilatura",
     "beautifulsoup4",
     "yt-dlp",
+    "pypdf",
+    "pdfplumber",
+    "pypdfium2",
+    "pillow",
 ]
 
 [tool.uv]
