@@ -226,3 +226,6 @@ __marimo__/
 dist
 output
 docs
+
+# macOS
+.DS_Store
