@@ -8,6 +8,82 @@
 v0.0.1 から数え直した。
 
 ---
+## [v0.0.2] - 2026-11-12
+
+### 追加｜入力と契約（`fetch_convert.py`）
+
+- **`--file <path>`**: 手元のファイル（html / pdf / docx / xlsx / pptx）を変換する。URL か `--file` のどちらか 1 つ
+- **形式の判定**: 拡張子 → Content-Type の順で決め、先頭のバイト（`%PDF`、ZIP の中の `word/` `xl/` `ppt/`）で確かめる。
+  食い違うときは中身を採る（拡張子が違っても変換できる）。旧 Office（OLE）も見分ける
+- **`-o` は Markdown の出力だけ**にした。PDF の置き場所は **`--outdir`** に分けた
+  - 出力名は入力名から作り（Windows で使えない文字は `_` にする）、同名があれば `-2`・`-3` と連番にする
+    （これまでは常に `downloaded.pdf` で、続けて変換すると上書きされた）
+  - `--outdir` を省略すると一時フォルダに置き、その場所を標準エラーに出す
+  - `--file` で渡した PDF は、写さずにそのパスを返す
+  - `-o` の親フォルダが無いときは作る
+- **`--check-env`**: `curl`・`soffice`（見つけた場所）・poppler・`uv`・Python の版・Python の依存の有無を調べ、
+  標準出力に JSON、標準エラーに 1 行ずつ出す。外部には接続しない
+- **`--force`**: `LOGIN_REQUIRED`・`JS_RENDERED`（どちらも推定）で止めずに続行する。ほかの理由コードには効かない
+- `--pdf-passthrough` は互換として残した（`--help` に明記）。soffice が無いときは、何も作らずに `MISSING_TOOL` で止まる
+- soffice の探索を `_common.find_soffice` にまとめた（環境変数 `SOFFICE_PATH` → PATH → 既定の場所）。
+  この版では PDF 化の経路だけが使う
+
+### 追加｜理由コード `LOGIN_REQUIRED`・`JS_RENDERED`
+
+- ログイン画面らしい（パスワード欄があり本文が短い、など）・JavaScript で描画するらしい（本文がほとんど無く、
+  空のアプリ用の要素や「JavaScript を有効に」の注記がある）ページを、変換せずに止める。
+  断定せず「らしい」と表示し、迷うときは止めない。`fetch_convert.py` と `html_to_md.py` の両方
+
+### 変更｜`--help` を契約書に
+
+- 4 本のスクリプトの `--help` に、入力・出力・標準出力・標準エラー・終了コード・理由コード（と意味）を書いた。
+  理由コードの表は `_common.REASON_MEANINGS` 1 か所から作る（`--help` と実装がずれない）
+- `youtube_to_md.py`・`add_frontmatter.py` も同じ書き方にそろえた。`add_frontmatter.py` は `run_main` で包み、
+  Markdown が空なら `EMPTY_CONTENT`、ファイルが無ければ引数の誤り（終了コード 2）にした
+- 理由コードの表を実装に合わせた（`FETCH_FAILED`・`CONVERT_FAILED`・`UNEXPECTED` を表に加えた）
+
+### 修正｜`html_to_md.py`
+
+- `srcset` の絶対化: 「URL 幅, URL 幅」の複数指定を 1 つずつ絶対化する。`img[srcset]`・`data-srcset` も対象にした
+  （これまでは `source[srcset]` だけで、値全体を 1 つの URL として扱っていた）
+- 重複除去を、説明どおりの動きにした。これまでは「30 字超の行を文書全体で 1 回だけ残す」で、
+  意図して繰り返された引用や定型文も落ちていた。今は ①続けて出た同じ長いブロック ②2 ブロック以上の並びが
+  そっくり繰り返されたもの（trafilatura が本文を丸ごと 2 回出すことがある）だけを除く。
+  **出力が変わる場合がある**（離れた場所の 1 つだけの繰り返しは残る）
+- 本文が空の HTML は `EMPTY_CONTENT` で止める
+
+### 追加｜テスト（47 → 113 件）
+
+- `tests/test_contract.py`: 形式判定の表（名前 × Content-Type × 先頭のバイト）、`--help` の必須語、
+  `--outdir` の同名回避、`--check-env`、`--file`（html・docx・拡張子違い・空・旧 Office）、
+  ログイン・JS 描画の推定と `--force`、`srcset`、重複除去
+- 自作の docx・pdf はテストの中で作る。手元の HTTP サーバーに `/files/report.pdf`・`/pdf-no-ext`・`/login`・`/spa` を足した
+
+### 既知の問題
+
+- `soffice` を使う PDF 化の経路は、この環境に LibreOffice が無く、**動かして確かめていない**（無い場合の `MISSING_TOOL` だけ確認）
+- `--file` の docx は直接変換で通るが、xlsx / pptx の直接変換に必要な依存は次の版（v0.0.3）で足す。足りない間は `MISSING_TOOL`
+- ログイン画面・JS 描画の判定は推定で、実際のサイトでの当たり外れは未確認（`--force` で回避できる）
+- Windows と Claude.ai では、まだ実機で確かめていない
+
+### ファイル構成の変更
+
+```
+新規:
+  tests/test_contract.py
+変更:
+  url-to-md/scripts/_common.py
+  url-to-md/scripts/fetch_convert.py
+  url-to-md/scripts/html_to_md.py
+  url-to-md/scripts/youtube_to_md.py
+  url-to-md/scripts/add_frontmatter.py
+  tests/conftest.py
+  pyproject.toml
+  uv.lock
+  CHANGELOG
+```
+
+---
 ## [v0.0.1] - 2026-11-12
 
 ### 修正｜スクリプトの土台（文字コード・失敗の伝え方・取得）

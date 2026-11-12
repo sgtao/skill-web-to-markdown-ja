@@ -28,10 +28,11 @@ add_frontmatter.py — 変換済みMarkdownにYAMLフロントマターを付与
 """
 import argparse
 import datetime
+import os
 import re
 import sys
 
-from _common import setup_stdio
+from _common import StopReason, contract_epilog, run_main
 
 
 def detect_has_figures(md):
@@ -117,23 +118,50 @@ def build_frontmatter(title, url, fmt, has_fig, summary, when=None,
 
 
 def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("body", help="変換済みMarkdownファイル")
-    ap.add_argument("--url", required=True)
+    ap = argparse.ArgumentParser(
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=(
+            "変換済みの Markdown に、YAML のフロントマターを付ける。\n"
+            "\n"
+            "入力:\n"
+            "  <body>           変換済みの Markdown ファイル（UTF-8）\n"
+            "  --url・--format  変換元の URL（またはファイルのパス）と形式（必須）\n"
+            "出力:\n"
+            "  -o <file>        フロントマターつきの Markdown を書くファイル（UTF-8）。\n"
+            "                   省略時は標準出力。<body> と同じファイルを指定してよい\n"
+            "  すでにフロントマターがあるときは、付け足さずにそのまま出す。"),
+        epilog=contract_epilog(
+            ("EMPTY_CONTENT",),
+            "フロントマターつきの Markdown（-o を付けたときは何も出さない）",
+            exit_codes={
+                0: "成功",
+                1: "想定外のエラー（REASON=UNEXPECTED。スクリプトは書き換えずに報告する）",
+                2: "引数の誤り（<body> のファイルが無い場合を含む）",
+                3: "変換できない（理由コードつき）",
+            }))
+    ap.add_argument("body", help="変換済みの Markdown ファイル")
+    ap.add_argument("--url", required=True, help="変換元の URL（またはファイルのパス）")
     ap.add_argument("--format", required=True,
-                    choices=["html", "pdf", "docx", "xlsx", "pptx", "youtube"])
+                    choices=["html", "pdf", "docx", "xlsx", "pptx", "youtube"],
+                    help="変換元の形式")
     ap.add_argument("--title", default=None, help="省略時は本文先頭見出し")
     ap.add_argument("--summary", default=None, help="省略時は先頭段落200字")
     ap.add_argument("--channel", default=None, help="YouTube: チャンネル名")
     ap.add_argument("--published", default=None, help="YouTube: 公開日 YYYY-MM-DD")
     ap.add_argument("--duration", default=None, help="YouTube: 動画の長さ 例 12:34")
-    ap.add_argument("--retrieved-at", default=None)
-    ap.add_argument("-o", "--output", default=None)
+    ap.add_argument("--retrieved-at", default=None,
+                    help="取得日時（ISO8601。省略時は現在の時刻）")
+    ap.add_argument("-o", "--output", default=None, metavar="FILE",
+                    help="出力ファイル（省略時は標準出力）")
     args = ap.parse_args()
-    setup_stdio()  # Windows の cp932 で落ちないよう、標準出力を UTF-8 にする
 
-    with open(args.body, encoding="utf-8") as f:
+    if not os.path.isfile(args.body):
+        ap.error(f"ファイルが見つかりません: {args.body}")
+    with open(args.body, encoding="utf-8", errors="replace") as f:
         md = f.read()
+    if not md.strip():
+        raise StopReason("EMPTY_CONTENT", f"Markdown が空でした: {args.body}",
+                         "変換の結果を確かめてください。")
 
     # 既にフロントマターがある場合は二重付与しない
     if md.lstrip().startswith("---"):
@@ -160,4 +188,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    run_main(main)

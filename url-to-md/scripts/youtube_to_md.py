@@ -32,7 +32,7 @@ import subprocess
 import sys
 import urllib.request
 
-from _common import setup_stdio
+from _common import contract_epilog, setup_stdio
 
 YOUTUBE_URL_RE = re.compile(
     r"(?:https?://)?(?:www\.|m\.)?"
@@ -290,15 +290,33 @@ def build_markdown(
 
 def main() -> None:
     """CLIエントリポイント。"""
+    setup_stdio()  # Windows の cp932 で落ちないよう、標準出力を UTF-8 にする（--help も含む）
     ap = argparse.ArgumentParser(
-        description="YouTube動画の概要+トランスクリプトをMarkdownに変換")
-    ap.add_argument("url", help="YouTube動画のURL")
-    ap.add_argument("-o", "--output", default=None,
-                    help="出力Markdownパス（省略時はstdout）")
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=(
+            "YouTube 動画の概要とトランスクリプト（字幕）を Markdown にする。\n"
+            "\n"
+            "入力:\n"
+            "  <URL>            YouTube 動画の URL（watch / youtu.be / shorts / live / embed）\n"
+            "出力:\n"
+            "  -o <file>        Markdown を書くファイル（UTF-8）。省略時は標準出力"),
+        epilog=contract_epilog(
+            (), "Markdown の本文。-o を付けたときは、出力したファイルのパス 1 行",
+            exit_codes={
+                0: "成功（字幕が無い動画は、概要だけを出力して成功とする）",
+                1: "失敗（YouTube の URL でない・取得できない・yt-dlp が無い など）。"
+                   "標準エラーに [error] 理由 を出す",
+                2: "引数の誤り",
+            },
+            notes=["補足:",
+                   "  このスクリプトは理由コード（REASON=...）を出さない。",
+                   "  yt-dlp が必要（uv run なら自動で入る）。翻訳字幕は使わない。"]))
+    ap.add_argument("url", help="YouTube 動画の URL")
+    ap.add_argument("-o", "--output", default=None, metavar="FILE",
+                    help="Markdown の出力ファイル（省略時は標準出力）")
     ap.add_argument("--timeout", type=int, default=120,
-                    help="yt-dlpのタイムアウト秒（既定120）")
+                    help="yt-dlp の制限時間（秒。既定 120）")
     args = ap.parse_args()
-    setup_stdio()  # Windows の cp932 で落ちないよう、標準出力を UTF-8 にする
 
     if not is_youtube_url(args.url):
         print(f"[error] YouTube動画のURLではありません: {args.url}", file=sys.stderr)

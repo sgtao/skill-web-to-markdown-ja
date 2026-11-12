@@ -12,8 +12,24 @@ FIXTURES = os.path.join(ROOT, "tests", "fixtures")
 sys.path.insert(0, SCRIPTS)
 
 
+MINIMAL_PDF = (b"%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n"
+               b"2 0 obj<</Type/Pages/Kids[]/Count 0>>endobj\n"
+               b"trailer<</Root 1 0 R>>\n%%EOF\n")
+LOGIN_HTML = ('<html><head><meta charset="utf-8"><title>ログイン</title></head><body>'
+              '<h1>会員ログイン</h1><form><input type="text" name="id">'
+              '<input type="password" name="pw"><button>送信</button></form></body></html>')
+SPA_HTML = ('<html><head><meta charset="utf-8"><title>App</title>'
+            '<script src="/static/app.js"></script></head><body>'
+            '<noscript>You need to enable JavaScript to run this app.</noscript>'
+            '<div id="root"></div></body></html>')
+
+
 class _Handler(http.server.BaseHTTPRequestHandler):
-    """/sjis・/sjis-header・/emoji・/empty・/redirect を返し、ほかは 404 にする。"""
+    """決まったパスだけ返し、ほかは 404 にする。
+
+    /sjis・/sjis-header・/emoji・/empty・/redirect・/files/report.pdf・
+    /pdf-no-ext（Content-Type が octet-stream の PDF）・/login・/spa
+    """
 
     def log_message(self, *args):  # テストの出力を汚さない
         pass
@@ -38,6 +54,14 @@ class _Handler(http.server.BaseHTTPRequestHandler):
         elif self.path == "/emoji":
             self._send(200, self._fixture("utf8_emoji.html"),
                        "text/html; charset=utf-8")
+        elif self.path == "/files/report.pdf":
+            self._send(200, MINIMAL_PDF, "application/pdf")
+        elif self.path == "/pdf-no-ext":
+            self._send(200, MINIMAL_PDF, "application/octet-stream")
+        elif self.path == "/login":
+            self._send(200, LOGIN_HTML.encode("utf-8"), "text/html; charset=utf-8")
+        elif self.path == "/spa":
+            self._send(200, SPA_HTML.encode("utf-8"), "text/html; charset=utf-8")
         elif self.path == "/empty":
             self._send(200, b"")
         elif self.path == "/redirect":

@@ -9,6 +9,10 @@
   - fetch()         curl で取得する（バイト列で受け、HTTP ステータスを確かめる）
   - decode_html()   HTML のバイト列を、文字コードを判定して文字列にする
   - move()          ドライブ（ファイルシステム）をまたいでも動く移動
+  - contract_epilog()  --help の末尾に出す「契約」（標準出力・終了コード・理由コード）
+  - sniff_format()  ファイルの先頭のバイトから形式を確かめる
+  - unique_path()   同名のファイルがあれば連番を付けた出力先を返す
+  - find_soffice() / check_env()  道具の有無を調べる（外部には接続しない）
 
 終了コード:
   0 成功 / 1 想定外のエラー / 2 引数の誤り（argparse）/
@@ -16,16 +20,21 @@
 """
 from __future__ import annotations
 
+import glob
+import importlib.util
 import os
+import platform
 import re
 import shutil
 import subprocess
 import sys
 import tempfile
-from urllib.parse import urlparse
+import zipfile
+from urllib.parse import unquote, urlparse
 
 EXIT_OK = 0
 EXIT_UNEXPECTED = 1
+EXIT_USAGE = 2
 EXIT_STOP = 3
 EXIT_MISSING_TOOL = 4
 
@@ -36,12 +45,33 @@ NEXT_STEPS = {
     "NO_NETWORK": "この環境から外部に通信できないようです。対象のファイルを保存して、ファイルとして渡してください。",
     "UNSUPPORTED_SCHEME": "http:// または https:// の URL か、ファイルを指定してください。",
     "HTTP_ERROR": "URL を確かめてください。ブラウザで開けるなら、保存（PDF 印刷など）してファイルとして渡してください。",
-    "EMPTY_CONTENT": "URL を確かめてください。",
+    "LOGIN_REQUIRED": "ブラウザで開いて保存（PDF 印刷など）し、ファイルとして渡してください。"
+                      "誤判定なら --force を付けて続行できます。",
+    "JS_RENDERED": "ブラウザで開いて保存（PDF 印刷など）し、ファイルとして渡してください。"
+                   "誤判定なら --force を付けて続行できます。",
+    "EMPTY_CONTENT": "URL またはファイルを確かめてください。",
     "FETCH_FAILED": "URL を確かめて、もう一度試してください。",
     "CONVERT_FAILED": "PDF で保存し直して渡してください。",
     "UNSUPPORTED_FORMAT": "PDF か新しい形式（docx / xlsx / pptx）で保存し直して渡してください。",
     "MISSING_TOOL": "表示された道具を導入してから、もう一度試してください。",
 }
+
+# 理由コード → 意味（--help に出す。終了コード 3・4 のときに REASON=<コード> で表示する）
+REASON_MEANINGS = {
+    "NO_NETWORK": "この環境から対象の URL に接続できない",
+    "UNSUPPORTED_SCHEME": "http / https 以外の URL",
+    "HTTP_ERROR": "サーバーがエラーを返した（404・403・500 など）",
+    "LOGIN_REQUIRED": "ログイン画面・有料記事の壁らしい（推定。--force で続行できる）",
+    "JS_RENDERED": "本文がほとんど取れない。JavaScript で描画するページらしい"
+                   "（推定。--force で続行できる）",
+    "EMPTY_CONTENT": "取得したファイル・渡されたファイルが空",
+    "FETCH_FAILED": "取得に失敗した（上のどれにも当たらない curl の失敗）",
+    "CONVERT_FAILED": "変換に失敗した（soffice での PDF 化など）",
+    "UNSUPPORTED_FORMAT": "対応していない形式（旧 Office の doc / xls / ppt を含む）",
+    "MISSING_TOOL": "必要な道具が無い（何が無いかを併記。終了コード 4）",
+}
+# 続行（--force）を認める理由コード。どちらも推定で止めているため
+FORCEABLE = ("LOGIN_REQUIRED", "JS_RENDERED")
 
 # curl の終了コードのうち「通信できない」とみなすもの
 #   5: プロキシを解決できない / 6: ホスト名を解決できない / 7: 接続できない / 28: 時間切れ
@@ -278,3 +308,178 @@ def write_stdout(text: str) -> None:
     """結果を標準出力に書く（UTF-8。改行は足さない）。"""
     sys.stdout.write(text)
     sys.stdout.flush()
+
+
+# ---- --help に出す契約 ------------------------------------------------------
+def contract_epilog(reason_codes=(), stdout: str = "", exit_codes=None,
+                    notes=()) -> str:
+    """--help の末尾（epilog）に出す、スクリプトの契約の文章を作る。
+
+    Args:
+        reason_codes: このスクリプトが出しうる理由コード。空なら理由コードの節を出さない。
+        stdout: 標準出力に何を出すかの説明。
+        exit_codes: 終了コード → 意味。省略時は 0〜4 の標準の割り当て。
+        notes: 末尾に足す補足の行。
+    """
+    if exit_codes is None:
+        exit_codes = {
+            0: "成功",
+            1: "想定外のエラー（REASON=UNEXPECTED。スクリプトは書き換えずに報告する）",
+            2: "引数の誤り",
+            3: "取得・変換できない（理由コードつき）",
+            4: "必要な道具が無い（REASON=MISSING_TOOL）",
+        }
+    lines = ["標準出力:", f"  {stdout}（常に UTF-8）",
+             "標準エラー:", "  進捗とログ（常に UTF-8）",
+             "終了コード:"]
+    lines += [f"  {code}  {text}" for code, text in exit_codes.items()]
+    if reason_codes:
+        lines += ["失敗時の表示（標準エラーの最後の 3 行）:",
+                  "  [stop] 理由 / [next] 次の手段 / REASON=<理由コード>",
+                  "  トレースバックは出さない（環境変数 URL_TO_MD_DEBUG=1 のときだけ出す）",
+                  "理由コード:"]
+        width = max(len(c) for c in reason_codes)
+        lines += [f"  {c.ljust(width)}  {REASON_MEANINGS[c]}" for c in reason_codes]
+    lines += list(notes)
+    return "\n".join(lines)
+
+
+# ---- 形式の確認 -------------------------------------------------------------
+_OLE_MAGIC = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
+_ZIP_DIRS = (("word/", "docx"), ("xl/", "xlsx"), ("ppt/", "pptx"))
+
+
+def sniff_format(path: str) -> str | None:
+    """ファイルの先頭のバイトから形式を確かめる。
+
+    Returns:
+        "pdf" / "docx" / "xlsx" / "pptx" / "ole"（旧 Office の入れ物）/ "html" /
+        分からなければ None。
+    """
+    try:
+        with open(path, "rb") as f:
+            head = f.read(2048)
+    except OSError:
+        return None
+    if head.lstrip()[:5] == b"%PDF-":
+        return "pdf"
+    if head.startswith(_OLE_MAGIC):
+        return "ole"
+    if head.startswith(b"PK\x03\x04"):
+        try:
+            with zipfile.ZipFile(path) as z:
+                names = z.namelist()
+        except (zipfile.BadZipFile, OSError):
+            return None
+        for prefix, fmt in _ZIP_DIRS:
+            if any(n.startswith(prefix) for n in names):
+                return fmt
+        return None
+    low = head.lower()
+    if b"<!doctype html" in low or b"<html" in low or b"<head" in low or b"<body" in low:
+        return "html"
+    return None
+
+
+# ---- 出力先の名前 -----------------------------------------------------------
+_UNSAFE_NAME_RE = re.compile(r'[\\/:*?"<>|\x00-\x1f]+')
+
+
+def safe_stem(source: str, default: str = "download") -> str:
+    """URL またはパスから、出力ファイル名の元になる名前（拡張子なし）を作る。
+
+    Windows で使えない文字は _ に置き換える。名前が取れなければ default を返す。
+    """
+    parsed = urlparse(source)
+    if parsed.scheme in ("http", "https"):
+        name = unquote(parsed.path.rstrip("/").rsplit("/", 1)[-1])
+        stem = os.path.splitext(name)[0] if name else parsed.netloc
+    else:
+        name = re.split(r"[\\/]", source.rstrip("/\\"))[-1]
+        stem = os.path.splitext(name)[0]
+    stem = _UNSAFE_NAME_RE.sub("_", stem).strip(" ._")
+    return stem[:80] or default
+
+
+def unique_path(directory: str, filename: str) -> str:
+    """directory の中で、まだ無いファイル名のパスを返す（フォルダは作る）。
+
+    同名があれば「名前-2.拡張子」「名前-3.拡張子」…と連番を付ける。
+    """
+    os.makedirs(directory, exist_ok=True)
+    stem, ext = os.path.splitext(filename)
+    candidate = os.path.join(directory, filename)
+    n = 2
+    while os.path.exists(candidate):
+        candidate = os.path.join(directory, f"{stem}-{n}{ext}")
+        n += 1
+    return candidate
+
+
+# ---- 道具の有無 -------------------------------------------------------------
+def find_soffice() -> str | None:
+    """LibreOffice（soffice）の場所を探す。見つからなければ None。
+
+    順番: 環境変数 SOFFICE_PATH → PATH 上の soffice / libreoffice → 既定の場所。
+    """
+    env = os.environ.get("SOFFICE_PATH")
+    if env and os.path.isfile(env):
+        return env
+    for name in ("soffice", "libreoffice"):
+        found = shutil.which(name)
+        if found:
+            return found
+    candidates = []
+    for var in ("ProgramFiles", "ProgramFiles(x86)", "ProgramW6432"):
+        base = os.environ.get(var)
+        if base:
+            candidates.append(os.path.join(base, "LibreOffice", "program", "soffice.exe"))
+    candidates += ["/Applications/LibreOffice.app/Contents/MacOS/soffice",
+                   "/usr/bin/soffice", "/usr/local/bin/soffice", "/snap/bin/libreoffice"]
+    candidates += sorted(glob.glob("/opt/libreoffice*/program/soffice"))
+    for path in candidates:
+        if os.path.isfile(path):
+            return path
+    return None
+
+
+def _has_module(name: str) -> bool:
+    try:
+        return importlib.util.find_spec(name) is not None
+    except (ImportError, ValueError):
+        return False
+
+
+def check_env() -> dict:
+    """道具の有無を調べて辞書で返す。外部には接続しない。
+
+    通信できるかは調べない（対象の URL を取得してみて判定する）。
+    """
+    tools = {"curl": shutil.which("curl"), "soffice": find_soffice(),
+             "uv": shutil.which("uv")}
+    for name in ("pdfinfo", "pdftotext", "pdftoppm", "pdfimages"):
+        tools[name] = shutil.which(name)
+    modules = {name: _has_module(name) for name in (
+        "markitdown", "trafilatura", "bs4", "charset_normalizer", "yt_dlp",
+        "openpyxl", "pptx", "cairosvg")}
+    return {
+        "python": platform.python_version(),
+        "python_ok": sys.version_info >= (3, 10),
+        "platform": sys.platform,
+        "stdout_encoding": getattr(sys.stdout, "encoding", None),
+        "tools": tools,
+        "modules": modules,
+        "network": "not_checked",
+    }
+
+
+def format_env(env: dict) -> list[str]:
+    """check_env の結果を、人が読める 1 行ずつの文字列にする。"""
+    ok = "OK" if env["python_ok"] else "NG（3.10 以上が必要）"
+    lines = [f"{'python'.ljust(21)}: {env['python']} {ok}（{env['platform']}）"]
+    for name, path in env["tools"].items():
+        lines.append(f"{name.ljust(21)}: {path or '無し'}")
+    for name, found in env["modules"].items():
+        lines.append(f"{('py:' + name).ljust(21)}: {'あり' if found else '無し'}")
+    lines.append("network".ljust(21) + ": 調べていない（対象の URL を取得してみて判定する）")
+    return lines
