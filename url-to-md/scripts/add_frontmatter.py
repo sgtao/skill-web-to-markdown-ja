@@ -10,6 +10,7 @@ add_frontmatter.py — 変換済みMarkdownにYAMLフロントマターを付与
   title         文書タイトル（本文先頭の見出し or 明示指定）
   source_url    変換元URL
   source_format html|pdf|docx|xlsx|pptx|youtube
+  conversion    pdf|direct|model-read（--conversion を渡したときだけ。どの経路で作ったか）
   has_figures   SVG/Mermaid/画像を含むか（本文から自動判定）
   summary       200文字以内の要約（明示指定 or 先頭本文から自動抽出）
   retrieved_at  取得日時（ISO8601, 自動）
@@ -92,8 +93,11 @@ def yaml_escape(s):
     return s
 
 
+CONVERSIONS = ("pdf", "direct", "model-read")
+
+
 def build_frontmatter(title, url, fmt, has_fig, summary, when=None,
-                      channel=None, published=None, duration=None):
+                      channel=None, published=None, duration=None, conversion=None):
     when = when or datetime.datetime.now().astimezone().isoformat(timespec="seconds")
     lines = [
         "---",
@@ -101,6 +105,8 @@ def build_frontmatter(title, url, fmt, has_fig, summary, when=None,
         f"source_url: {yaml_escape(url)}",
         f"source_format: {fmt}",
     ]
+    if conversion:
+        lines.append(f"conversion: {conversion}")
     if channel:
         lines.append(f"channel: {yaml_escape(channel)}")
     if published:
@@ -144,6 +150,9 @@ def main():
     ap.add_argument("--format", required=True,
                     choices=["html", "pdf", "docx", "xlsx", "pptx", "youtube"],
                     help="変換元の形式")
+    ap.add_argument("--conversion", choices=CONVERSIONS, default=None,
+                    help="どの経路で作ったか。pdf: PDF 経由（pdf-to-md-ja）／direct: 直接変換／"
+                         "model-read: 添付を Claude が直接読んで起こした（省略時は書かない）")
     ap.add_argument("--title", default=None, help="省略時は本文先頭見出し")
     ap.add_argument("--summary", default=None, help="省略時は先頭段落200字")
     ap.add_argument("--channel", default=None, help="YouTube: チャンネル名")
@@ -176,7 +185,7 @@ def main():
         fm = build_frontmatter(title, args.url, args.format, has_fig,
                                summary, args.retrieved_at,
                                channel=args.channel, published=args.published,
-                               duration=args.duration)
+                               duration=args.duration, conversion=args.conversion)
         out = fm + md
 
     if args.output:

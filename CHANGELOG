@@ -8,6 +8,75 @@
 v0.0.1 から数え直した。
 
 ---
+## [v0.0.3] - 2026-11-12
+
+### 追加｜Office を、soffice が無くても必ず最後まで変換する（`fetch_convert.py`）
+
+- **`--route auto|pdf|direct`**（既定は `auto`）。どの経路になったかは標準エラーの `ROUTE=pdf` / `ROUTE=direct` で分かる
+
+  | 形式 | soffice あり | soffice なし |
+  |---|---|---|
+  | docx / pptx | `pdf`（PDF のパスを返す。変換は pdf-to-md-ja） | `direct`（直接変換＋補足） |
+  | xlsx | `direct`（表が崩れにくい）。`--route pdf` で PDF 経由も選べる | `direct` |
+  | pdf | `pdf` | `pdf` |
+  | html | `direct` | `direct` |
+  | 旧 doc / xls / ppt | soffice で新形式にしてから上の行へ | `LEGACY_NEEDS_SOFFICE` で止まる |
+
+  **動きが変わる点**: soffice があるとき、docx / pptx は `auto` で PDF のパスを返す（これまでは Markdown）。
+  Markdown がほしいときは `--route direct`。`--pdf-passthrough` は `--route pdf` の別名として残した
+- **直接変換の依存を `markitdown[docx,xlsx,pptx]` に**（PEP 723・`pyproject.toml`・`uv.lock`）。
+  これまで xlsx / pptx の直接変換は、依存が無くて動かなかった
+- **画面情報の補足**（`office_extract.py` を新設）。直接変換した Office の本文の末尾に、自動で足す（`--no-supplement` で止められる）
+  1. グラフ: 種類・題名・系列・項目・数値を表にする（グラフの数値がキャッシュに無い xlsx は、セルの値を読む）
+  2. 画像: 埋め込み画像を `<名前>_assets/` に取り出し、どのスライド／シートにあるかの表を出す（`-o` があれば相対パス）
+  3. 再現できなかったもの: 図形・線・SmartArt・数式・動画・OLE・数値を取り出せなかったグラフを数えて明記する。
+     何も無いときも「ありませんでした」と書く（黙って落とさない）
+  - あわせて、発表者ノート、非表示のスライド・シート（直接変換の本文には含まれる）を書く
+  - 補足の作成に失敗しても本文の変換は捨てず、補足が無いことを本文に書いて警告を出す
+  - `office_extract.py` は単独でも使える（`--assets-dir`・`--md-dir`・`--json`）。ファイル（ZIP）の中身を直接読み、python-pptx には依存しない
+- **soffice を専用プロファイルで動かす**（`_common.run_soffice`。`-env:UserInstallation=file:///…`）。
+  LibreOffice を開いたままでも変換でき、同時に動かしても衝突しない
+- 理由コード `LEGACY_NEEDS_SOFFICE`（旧 Office で soffice が無い）を追加。`--help` にも載せた
+- `add_frontmatter.py`: `--conversion pdf|direct|model-read` を追加（どの経路で作ったかを `conversion:` に残す）
+
+### 追加｜テスト（113 → 155 件）
+
+- `tests/test_office.py`: 経路の選び方の表、グラフ・画像・ノート・非表示・図形の取り出し（pptx・xlsx・docx）、
+  soffice を見えなくした状態での直接変換、`--route`、旧形式、補足の失敗時の表示、`find_soffice` の探索順
+- `tests/office_fixtures.py`: pptx（文字・表・棒グラフ・写真・図形 2 つ・ノート・非表示スライド）、
+  xlsx（表・棒グラフ・写真・非表示シート）、docx（写真）をその場で作る
+- LibreOffice の代わりに、引数を記録して出力ファイルを作る偽の soffice（sh）を使う（Windows ではこの部分をスキップ）
+
+### 既知の問題
+
+- **実際の LibreOffice では、まだ動かして確かめていない**（この環境に無い）。PDF 化・旧形式の変換は、偽の soffice での確認まで
+- グラフの取り出しは、python-pptx・openpyxl で作ったファイルでしか確かめていない。
+  PowerPoint・Excel が作ったファイル（複合グラフ、外部のブックを参照するグラフなど）では未確認。取り出せないものは数えて明記する
+- 再現できなかったものの数は、ファイルの中の要素を数えたおおよその値
+- 直接変換の本文の `![…](ファイル名)` は markitdown が付けた仮の名前で、実在のファイルではない（補足の表に注意書きを入れた）。
+  実在の画像は補足の表にある
+- `SKILL.md` と `README.md` の `pip install "markitdown[docx]"` は古いまま（P5・P6 で直す）
+- Windows と Claude.ai では、まだ実機で確かめていない。Windows での失敗の実ログは、もらわずに P3 を進めた
+
+### ファイル構成の変更
+
+```
+新規:
+  url-to-md/scripts/office_extract.py
+  tests/test_office.py
+  tests/office_fixtures.py
+変更:
+  url-to-md/scripts/_common.py
+  url-to-md/scripts/fetch_convert.py
+  url-to-md/scripts/html_to_md.py
+  url-to-md/scripts/add_frontmatter.py
+  tests/test_contract.py
+  pyproject.toml
+  uv.lock
+  CHANGELOG
+```
+
+---
 ## [v0.0.2] - 2026-11-12
 
 ### 追加｜入力と契約（`fetch_convert.py`）

@@ -23,6 +23,7 @@ from __future__ import annotations
 import glob
 import importlib.util
 import os
+import pathlib
 import platform
 import re
 import shutil
@@ -53,6 +54,8 @@ NEXT_STEPS = {
     "FETCH_FAILED": "URL を確かめて、もう一度試してください。",
     "CONVERT_FAILED": "PDF で保存し直して渡してください。",
     "UNSUPPORTED_FORMAT": "PDF か新しい形式（docx / xlsx / pptx）で保存し直して渡してください。",
+    "LEGACY_NEEDS_SOFFICE": "新しい形式（docx / xlsx / pptx）で保存し直して渡してください。"
+                            "LibreOffice（soffice）を導入すれば、旧形式も自動で変換します。",
     "MISSING_TOOL": "表示された道具を導入してから、もう一度試してください。",
 }
 
@@ -67,7 +70,8 @@ REASON_MEANINGS = {
     "EMPTY_CONTENT": "取得したファイル・渡されたファイルが空",
     "FETCH_FAILED": "取得に失敗した（上のどれにも当たらない curl の失敗）",
     "CONVERT_FAILED": "変換に失敗した（soffice での PDF 化など）",
-    "UNSUPPORTED_FORMAT": "対応していない形式（旧 Office の doc / xls / ppt を含む）",
+    "UNSUPPORTED_FORMAT": "対応していない形式",
+    "LEGACY_NEEDS_SOFFICE": "旧 Office（doc / xls / ppt）で、LibreOffice（soffice）が無い",
     "MISSING_TOOL": "必要な道具が無い（何が無いかを併記。終了コード 4）",
 }
 # 続行（--force）を認める理由コード。どちらも推定で止めているため
@@ -441,6 +445,50 @@ def find_soffice() -> str | None:
         if os.path.isfile(path):
             return path
     return None
+
+
+SOFFICE_TIMEOUT = 180
+
+
+def run_soffice(soffice: str, src: str, target: str, outdir: str,
+                workdir: str, timeout: int = SOFFICE_TIMEOUT) -> str:
+    """soffice で src を target の形式（pdf / docx / xlsx / pptx）に変換する。
+
+    専用のプロファイル（workdir の中）を使うので、LibreOffice を開いたままでも
+    変換でき、同時に動かしても衝突しない。
+
+    Args:
+        soffice: soffice の場所（find_soffice の結果）。
+        src: 変換元のファイル。
+        target: 変換先の形式。
+        outdir: 変換後のファイルを置くフォルダ（無ければ作る）。
+        workdir: 専用プロファイルを置く一時フォルダ。
+        timeout: 制限時間（秒）。
+
+    Returns:
+        変換後のファイルのパス。
+
+    Raises:
+        StopReason: MISSING_TOOL（soffice を実行できない）/ CONVERT_FAILED。
+    """
+    os.makedirs(outdir, exist_ok=True)
+    profile = pathlib.Path(workdir, "lo_profile").resolve().as_uri()
+    cmd = [soffice, f"-env:UserInstallation={profile}", "--headless", "--norestore",
+           "--convert-to", target, "--outdir", outdir, src]
+    try:
+        r = subprocess.run(cmd, capture_output=True, timeout=timeout)
+    except (FileNotFoundError, PermissionError):
+        raise StopReason("MISSING_TOOL",
+                         f"LibreOffice（soffice）を実行できません: {soffice}") from None
+    except subprocess.TimeoutExpired:
+        raise StopReason("CONVERT_FAILED",
+                         f"soffice での変換が時間切れになりました（{timeout} 秒）。") from None
+    made = os.path.join(outdir, os.path.splitext(os.path.basename(src))[0] + "." + target)
+    if r.returncode != 0 or not os.path.exists(made):
+        detail = (r.stderr or r.stdout).decode("utf-8", errors="replace").strip()[:200]
+        raise StopReason("CONVERT_FAILED",
+                         f"soffice で {target} に変換できませんでした: {detail}")
+    return made
 
 
 def _has_module(name: str) -> bool:

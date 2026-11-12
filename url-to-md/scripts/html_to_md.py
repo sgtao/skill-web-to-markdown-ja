@@ -4,7 +4,7 @@
 # dependencies = [
 #     "trafilatura",
 #     "beautifulsoup4",
-#     "markitdown[docx]>=0.1.5",
+#     "markitdown[docx,xlsx,pptx]>=0.1.5",
 # ]
 # ///
 """

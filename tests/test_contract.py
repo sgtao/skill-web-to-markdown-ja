@@ -262,11 +262,12 @@ def test_file_empty_and_unknown(scripts_dir, tmp_path):
     assert r.returncode == 3 and _last(r) == "REASON=UNSUPPORTED_FORMAT"
 
 
-def test_file_legacy_office_is_unsupported(scripts_dir, tmp_path):
+def test_file_legacy_office_is_stopped(scripts_dir, tmp_path):
     old = tmp_path / "a.xls"
     old.write_bytes(OLE_HEAD)
     r = _run(scripts_dir, "fetch_convert.py", "--file", str(old))
-    assert r.returncode == 3 and _last(r) == "REASON=UNSUPPORTED_FORMAT"
+    assert r.returncode == 3
+    assert _last(r) in ("REASON=LEGACY_NEEDS_SOFFICE", "REASON=CONVERT_FAILED")
 
 
 def test_office_passthrough_without_soffice_is_missing_tool(scripts_dir, tmp_path,
