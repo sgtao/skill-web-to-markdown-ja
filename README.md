@@ -1,133 +1,139 @@
 # skill-web-to-markdown
 
-Web上のコンテンツ（HTML / PDF / docx / xlsx / pptx / YouTube動画）をMarkdownファイルへ
-変換するClaude Code用スキルセット。URLを渡すだけで「取得 → 形式判定 → 変換」まで行い、
-表はMarkdownテーブルに、図はSVG / Mermaid / 抽出画像として、YouTubeは概要+字幕
+Web 上のコンテンツ（HTML / PDF / docx / xlsx / pptx / YouTube 動画）や手元のファイルを
+Markdown に変換するスキルセット。「取得 → 形式判定 → 変換」まで行い、
+表は Markdown テーブルに、図は SVG / Mermaid / 抽出画像として、YouTube は概要＋字幕
 （タイムスタンプ付き）として再現する。
 
 ## 収録スキル
 
 | スキル | 役割 |
 |--------|------|
-| [url-to-md](url-to-md/SKILL.md) | エントリポイント。URLから取得して形式判定。HTMLは本文抽出+画像の絶対URL化、YouTubeは概要+字幕の取得で完結、PDF/OfficeはPDFに正規化して pdf-to-md-ja へ委譲 |
-| [pdf-to-md-ja](pdf-to-md-ja/SKILL.md) | PDF→Markdown変換。目次・表の構造を保持し、グラフ等の数値図はSVG、構造図はMermaid、写真・地図はラスタ抽出で再現 |
+| [url-to-md](url-to-md/SKILL.md) | エントリポイント。URL または手元のファイルから形式を判定して変換。HTML は本文抽出＋画像の絶対 URL 化、YouTube は概要＋字幕で完結。PDF / Office は LibreOffice があれば PDF にして pdf-to-md-ja へ、無ければスクリプトで直接変換 |
+| [pdf-to-md-ja](pdf-to-md-ja/SKILL.md) | PDF → Markdown。目次・表の構造を保持し、グラフ等の数値図は SVG、構造図は Mermaid、写真・地図はラスタ抽出で再現。poppler・cairosvg が無くても動く |
+
+## 対応する環境
+
+| 環境 | 入れ方 | 状態 |
+|---|---|---|
+| Claude Code（macOS / Linux） | `bash scripts/install.sh` | 動作確認済み（macOS） |
+| Claude Code（Windows） | Git Bash で `bash scripts/install.sh`（下の「Windows の準備」） | 実機確認は v0.1.0 の前に実施 |
+| Claude.ai（Web） | `bash scripts/install.sh --zip` で作った ZIP を「カスタマイズ > スキル」に登録 | 実機確認は v0.1.0 の前に実施。コード実行が使えない設定のときは Claude が添付ファイルを直接読む（図は再現しない） |
+| GitHub Copilot / `.agents` 規約のエージェント | `--target copilot` / `--target agents` | 配置のみ（動作は未確認） |
+
+## 道具の有無でできること
+
+スクリプトは `uv run` で依存ライブラリを自動で入れる。次の外部の道具は**無くても動く**が、できることが変わる。
+変換が縮退したときは、スキルが「理由・対象・次の手段」を返答で伝える。
+
+| 道具 | 無いとき |
+|---|---|
+| uv | `python` / `python3` / `py`（3.10 以上）で実行し、依存は `pip install` で入れる（ユーザーに確認） |
+| LibreOffice（`soffice`） | docx / pptx は直接変換になる。図形で描いた図は再現できない（グラフの数値と埋め込み画像は補足として本文に付く）。旧 doc / xls / ppt は変換できない（`LEGACY_NEEDS_SOFFICE`） |
+| poppler（`pdftotext` など） | `pypdf` / `pdfplumber` / `pypdfium2` に切り替わる。レイアウトの再現がやや粗くなる |
+| cairosvg | SVG を画像にして目で確かめる工程を省き、数値の検査（`warnings`）で代える |
+| ネットワーク・ログイン | 取得できないときは `NO_NETWORK` / `LOGIN_REQUIRED` などの理由コードで止まる |
+
+xlsx は常に直接変換（LibreOffice は使わない）。
 
 ## 処理の全体像
 
 ```
-URL ─┬─ youtube URL             → youtube_to_md.py（curl不使用）→ 概要+Transcript（完結）
-     └─curl──> 形式判定
-               ├─ html              → 本文抽出+画像絶対URL化 → Markdown（完結）
-               ├─ pdf               → 保存            ┐
-               ├─ docx/xlsx/pptx    → sofficeでPDF化  ┴→ pdf-to-md-ja へ委譲
-               └─ 旧 doc/xls/ppt    → sofficeで新形式へ変換後、上へ
+URL / ファイル ─┬─ youtube URL          → youtube_to_md.py → 概要＋Transcript（完結）
+                └─ 形式判定
+                   ├─ html              → 本文抽出＋画像の絶対 URL 化 → Markdown（完結）
+                   ├─ pdf               → pdf-to-md-ja へ
+                   ├─ docx / pptx       → soffice があれば PDF 化して pdf-to-md-ja へ／無ければ直接変換
+                   ├─ xlsx              → 直接変換
+                   └─ 旧 doc/xls/ppt    → soffice で新形式にしてから上へ
 ```
 
-2スキルの連携は **PDFファイルパス1つ** の疎結合インターフェース。
-変換結果の先頭には出典・要約などのYAMLフロントマターが付与される。
+2 スキルの連携は **PDF ファイルのパス 1 つ**。変換結果の先頭には、出典・変換の種類・要約などの
+YAML フロントマターが付く（`conversion` は `pdf` / `direct` / `model-read`）。
 
 ## インストール
 
 ```bash
-bash scripts/install.sh                   # スキルごとに確認しながら ~/.claude/skills へコピー
-bash scripts/install.sh -t copilot        # GitHub Copilot 用（~/.copilot/skills）へコピー
-bash scripts/install.sh -t claude,agents  # 複数指定（カンマ区切り or -t の繰り返し）
-bash scripts/install.sh -t all -y         # 全ターゲットへ確認なしでコピー（既存は削除して上書き）
-bash scripts/install.sh --zip             # dist/ にスキルごとの配布用ZIPを生成
+bash scripts/install.sh                    # ~/.claude/skills へ（スキルごとに確認）
+bash scripts/install.sh --dry-run          # 何もせず、行う操作だけ表示
+bash scripts/install.sh -y                 # 確認なしでコピー（既存は削除して上書き）
+bash scripts/install.sh --target all       # claude / copilot / agents / antigravity すべてへ
+bash scripts/install.sh --scope project --project-dir ~/work/app   # そのプロジェクトの中へ
+bash scripts/install.sh --dir /path/to/skills                      # 任意の場所へ
+bash scripts/install.sh --uninstall        # 配置先から削除
+bash scripts/install.sh --list-targets     # 配置先の一覧
+bash scripts/install.sh --zip              # dist/ にスキルごとの ZIP（Claude.ai 用）
 ```
 
-| ターゲット (`-t`) | インストール先 | 対象 | 上書き用の環境変数 |
-|---|---|---|---|
-| `claude`（既定） | `~/.claude/skills` | Claude Code | `CLAUDE_SKILLS_DIR` |
-| `copilot` | `~/.copilot/skills` | GitHub Copilot | `COPILOT_SKILLS_DIR` |
-| `agents` | `~/.agents/skills` | `.agents` 規約に対応するエージェント | `AGENTS_SKILLS_DIR` |
-| `all` | 上の3つすべて | | |
+`-t` は `--target` の別名。環境変数 `CLAUDE_SKILLS_DIR` で Claude Code・ユーザースコープの配置先を変えられる
+（ほかの配置先は `--dir` を使う）。手動で入れるなら `cp -r url-to-md pdf-to-md-ja ~/.claude/skills/` でもよい。
 
-プロジェクト単位に入れる場合は環境変数で指定する
-（例: `COPILOT_SKILLS_DIR=.github/skills bash scripts/install.sh -t copilot`、
-`AGENTS_SKILLS_DIR=.agents/skills bash scripts/install.sh -t agents`）。
+## Windows の準備
 
-手動でコピーする場合は `cp -r url-to-md pdf-to-md-ja ~/.claude/skills/` でもよい。
+`install.sh` は bash スクリプト。**Git for Windows に付く Git Bash** で実行する。
+
+1. [Git for Windows](https://gitforwindows.org/) を入れ、Git Bash を開く。
+2. `echo $HOME` が `/c/Users/<名前>`（= `C:\Users\<名前>`）になっていることを確かめる。
+   Claude Code が読む `~/.claude/skills` はこの下にある。別の場所を指すときは `--dir` か `CLAUDE_SKILLS_DIR` で指定する。
+3. [uv](https://docs.astral.sh/uv/) を入れる（PowerShell: `powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"`）。
+4. `--zip` を使うときは `zip` コマンドが要る。Git Bash には付いていない。
+   無ければ ZIP 生成は止まる（そのときは PowerShell の `Compress-Archive` で、`SKILL.md` がトップに来るよう各スキルのフォルダを固めてもよい）。
+5. LibreOffice が無くても pptx / docx は直接変換で動く。図形の図まで再現したいときだけ入れる。
+
+改行コードは `.gitattributes`（`*.sh text eol=lf`）で LF に固定している。
+`git clone` 後に `bad interpreter` や `\r` のエラーが出たら、改行が CRLF になっている。
 
 ## 使い方
 
-Claude Code でスキル導入後、次のように依頼する：
+スキル導入後、Claude Code で次のように頼む。
 
-- 「このURLをMarkdownにして」（Webページ）
+- 「このURLをMarkdownにして」（Web ページ）
 - 「URLのPDFをマークダウンにして」（PDF・図の再現つき）
-- 「リンク先のdocx/xlsx/pptxを変換して」（Officeドキュメント）
-- 「このYouTube動画をMarkdownにして」（概要+トランスクリプト・タイムスタンプ付き）
+- 「リンク先のdocx/xlsx/pptxを変換して」「このpptxをMarkdownにして」（Office）
+- 「このYouTube動画をMarkdownにして」（概要＋トランスクリプト）
+- 「このPDFをMarkdownに変換して」（pdf-to-md-ja 単体）
 
-ローカルPDFを直接変換する場合は「このPDFをMarkdownに変換して」で pdf-to-md-ja が単体でも動く。
+最初の変換の前に、スキルが `--check-env` で環境を一度だけ確かめる。
+スクリプトの書き換えはしない（オプションは各スクリプトの `--help` が正）。
 
-## 動作環境・依存
+## スクリプトを直接使う
 
-Claude Code（Ubuntu等のローカル環境）を想定。依存管理は **uv を推奨**
-（無ければ pip にフォールバック）。
-
-**uv（推奨）**: 各スクリプトは PEP 723 で依存を宣言済み。`uv run` が自動解決する。
-
-```bash
-# uv 本体のインストール（未導入の場合）
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# 開発用に .venv を作る場合（任意）
-uv sync
-```
-
-**pip フォールバック**:
+`uv run` は依存を自動で解決する（pip 環境なら `python3` に読み替え）。
+オプションの一覧は、それぞれ `--help`。
 
 ```bash
-pip install "markitdown[docx]" trafilatura beautifulsoup4 yt-dlp --break-system-packages
-```
-
-ほか: curl（必須）, LibreOffice soffice（Office変換時）, poppler-utils（PDF解析時）
-
-## CLI Usage（スキルを介さず直接使う）
-
-各スクリプトは単体のCLIとしても使える。`uv run` は依存を自動解決する
-（pip環境なら `python3` に読み替え）。
-
-### YouTube動画 → 概要+トランスクリプト
-
-```bash
-uv run url-to-md/scripts/youtube_to_md.py "https://www.youtube.com/watch?v=XXXX" -o video.md
-```
-
-字幕は動画の元言語（手動字幕 > 自動生成）。段落頭に `**[MM:SS]**` が付く。
-
-### Webページ → Markdown（本文抽出+画像絶対URL化）
-
-```bash
+uv run url-to-md/scripts/fetch_convert.py --check-env                       # 環境の確認
+uv run url-to-md/scripts/fetch_convert.py "<URL>" -o out.md                 # 形式を自動判定して変換
+uv run url-to-md/scripts/fetch_convert.py --file deck.pptx --route direct -o deck.md
 uv run url-to-md/scripts/html_to_md.py "https://example.com/article" -o article.md
+uv run url-to-md/scripts/youtube_to_md.py "https://www.youtube.com/watch?v=XXXX" -o video.md
+uv run url-to-md/scripts/add_frontmatter.py body.md --url "<URL>" --format html --conversion direct -o final.md
+uv run pdf-to-md-ja/scripts/pdf_probe.py doc.pdf --text                     # PDF の素性と本文
+uv run pdf-to-md-ja/scripts/pdf_render.py doc.pdf --pages 3 --outdir pages  # ページを PNG に
+uv run pdf-to-md-ja/scripts/svg_figures.py --outdir figs                    # 見本の SVG を出す
 ```
 
-### URL → 形式自動判定つき変換（PDF/Officeは委譲用に保存）
+失敗したときは、標準エラーの最後の 3 行（`[stop]` / `[next]` / `REASON=<理由コード>`）と終了コード
+（0 成功 / 1・3 失敗 / 2 引数の誤り / 4 必要な道具が無い）で原因が分かる。
+
+## テスト
 
 ```bash
-uv run url-to-md/scripts/fetch_convert.py "<URL>" -o out.md
-uv run url-to-md/scripts/fetch_convert.py "<URL>" --pdf-passthrough   # PDF/Office→PDF保存
+uv run --python 3.12 --with pytest pytest -q
 ```
-
-### YAMLフロントマター付与
-
-```bash
-uv run url-to-md/scripts/add_frontmatter.py body.md \
-    --url "<URL>" --format html --title "タイトル" --summary "要約" -o final.md
-# YouTube: --format youtube --channel "ch名" --published 2026-07-01 --duration "12:34"
-```
-
-※ `pdf-to-md-ja/scripts/svg_figures.py` はCLIではなく、Claudeが関数を呼ぶ
-SVG生成ライブラリ（標準ライブラリのみ）。
 
 ## ディレクトリ構成
 
 ```
-├── url-to-md/          # URL取得・形式判定・HTML変換スキル
-│   └── scripts/        # fetch_convert.py / html_to_md.py / youtube_to_md.py / add_frontmatter.py
-├── pdf-to-md-ja/       # PDF→Markdown変換スキル（図のSVG/Mermaid再現）
-│   ├── references/     # 図の判定・Mermaidパターン・SVGロジックの詳説
-│   └── scripts/        # svg_figures.py（SVGジェネレータ）
-└── scripts/
-    └── install.sh      # インストール支援スクリプト（Claude Code / GitHub Copilot / .agents 対応）
+├── url-to-md/            # 取得・形式判定・HTML/Office/YouTube の変換
+│   ├── SKILL.md          # エントリポイント（短い）
+│   ├── workflows/        # url / file / youtube / office-direct / finish の手順
+│   └── scripts/          # fetch_convert / html_to_md / youtube_to_md / add_frontmatter
+├── pdf-to-md-ja/         # PDF → Markdown（図の SVG / Mermaid 再現）
+│   ├── references/       # 図の判定・Mermaid パターン・SVG ロジック
+│   └── scripts/          # pdf_probe / pdf_render / svg_figures
+├── scripts/install.sh    # インストール支援（Claude Code / Copilot / .agents / Antigravity、ZIP）
+├── tests/                # pytest
+├── CHANGELOG
+└── .gitattributes        # *.sh は LF
 ```

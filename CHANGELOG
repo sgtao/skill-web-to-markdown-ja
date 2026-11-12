@@ -8,6 +8,33 @@
 v0.0.1 から数え直した。
 
 ---
+## [v0.0.6] - 2026-11-12
+
+### 変更｜`scripts/install.sh` を `13_skill-websearch-slide-ja` のものに合わせた（P6）
+
+- 配置先を `--target claude|copilot|agents|antigravity|all` と `--scope user|project`（`--project-dir`）で選ぶ。`--dir` で任意の場所へ
+- `--uninstall`（配置先から削除）・`--dry-run`（書き込まずに操作だけ表示）・`--list-targets`（配置先の一覧）・`-y` を追加
+- 再インストールは「削除してからコピー」。古いファイルが残らない。`.DS_Store` は配置先に残さない
+- `--scope project` で、スキルのリポジトリ自身を対象にしたときは止める
+- 互換（J-4）: `-t` は `--target` の別名として残した。環境変数は `CLAUDE_SKILLS_DIR` だけ残し、`COPILOT_SKILLS_DIR`・`AGENTS_SKILLS_DIR` は廃止（`--dir` を使う）
+- `--zip` は、スキルごとに `SKILL.md` をトップに持つ ZIP を `dist/` に作る（Claude.ai 用）
+
+### 追加
+
+- **`.gitattributes`**: `*.sh text eol=lf`。Windows で clone しても `install.sh` の改行が LF のまま
+- **`tests/test_install.py`**: `--dry-run`・インストール／アンインストール・古いファイルの削除・非対話・`-t`・`--list-targets`・ZIP の中身・LF 固定
+
+### 変更｜README
+
+- 作り直した。対応する環境の表（Claude Code の macOS / Linux / Windows、Claude.ai）、道具の有無でできることの表、Windows の準備（Git Bash 前提・`$HOME`・`zip`・改行）
+- 古くなっていた記述を直した（`pip install "markitdown[docx]"`、`--pdf-passthrough`、「PDF は常に pdf-to-md-ja へ」）
+
+### ファイル構成の変更
+
+- 新規: `.gitattributes`、`tests/test_install.py`
+- 変更: `scripts/install.sh`、`README.md`、`pyproject.toml`（0.0.6）、`CHANGELOG`
+
+---
 ## [v0.0.5] - 2026-11-12
 
 ### 追加｜`pdf-to-md-ja` を、poppler・cairosvg が無い環境でも動かす（P4）
