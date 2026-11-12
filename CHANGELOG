@@ -51,6 +51,29 @@ v0.0.1 から数え直した。
 - xlsx / pptx の直接変換に必要な依存が無い（次の版以降で対応する）
 - Windows と Claude.ai では、まだ実機で確かめていない
 
+### ファイル構成の変更
+
+```
+新規:
+  CHANGELOG
+  url-to-md/scripts/_common.py
+  tests/conftest.py
+  tests/test_common.py
+  tests/test_scripts.py
+  tests/fixtures/README.md
+  tests/fixtures/sjis.html
+  tests/fixtures/sjis_no_meta.html
+  tests/fixtures/utf8_emoji.html
+変更:
+  url-to-md/scripts/fetch_convert.py
+  url-to-md/scripts/html_to_md.py
+  url-to-md/scripts/youtube_to_md.py
+  url-to-md/scripts/add_frontmatter.py
+  pdf-to-md-ja/scripts/svg_figures.py
+  pyproject.toml
+  uv.lock
+```
+
 ---
 ## v0.0.1 より前（タグなし）
 
