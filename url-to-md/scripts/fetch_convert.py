@@ -25,10 +25,13 @@ PDFはダウンロードのみ行い、変換は呼び出し側に委ねる。
   （uv があれば自動解決。無ければ pip install）
 """
 import argparse
+import os
+import shutil
 import subprocess
 import sys
 import tempfile
-import os
+
+from _common import StopReason, fetch, move, read_html_file, run_main, write_stdout
 
 
 def detect_format(url, content_type=""):
@@ -56,39 +59,20 @@ def detect_format(url, content_type=""):
     return "html"  # 既定はWebページ
 
 
-def fetch(url, dest):
-    """curlで取得。Content-Typeをヘッダから取り出して返す。"""
-    # ヘッダ取得（リダイレクト追従）
-    head = subprocess.run(
-        ["curl", "-sIL", "-A", "Mozilla/5.0", url],
-        capture_output=True, text=True, timeout=60)
-    content_type = ""
-    for line in head.stdout.splitlines():
-        if line.lower().startswith("content-type:"):
-            content_type = line.split(":", 1)[1].strip()
-    # 本体取得
-    r = subprocess.run(
-        ["curl", "-sL", "-A", "Mozilla/5.0", "-o", dest, url],
-        capture_output=True, text=True, timeout=120)
-    if r.returncode != 0:
-        raise RuntimeError(f"curl失敗: {r.stderr[:200]}")
-    if not os.path.exists(dest) or os.path.getsize(dest) == 0:
-        raise RuntimeError("取得ファイルが空")
-    return content_type
-
-
-def convert(path, fmt, url=None):
+def convert(path, fmt, url=None, content_type=""):
     """markitdownでMarkdownに変換。HTMLは本文抽出+絶対URL化経路へ。"""
     legacy = {"doc_legacy", "xls_legacy", "ppt_legacy"}
     if fmt in legacy:
-        raise RuntimeError(
-            f"旧形式({fmt})はmarkitdown非対応。"
-            f"libreofficeで新形式へ変換してから再実行してください: "
-            f"soffice --headless --convert-to <docx|xlsx|pptx> {path}")
+        raise StopReason(
+            "UNSUPPORTED_FORMAT",
+            f"旧形式（{fmt}）はそのままでは変換できません。",
+            "新しい形式（docx / xlsx / pptx）か PDF で保存し直して渡してください"
+            "（LibreOffice があれば soffice --headless --convert-to "
+            "<docx|xlsx|pptx> で変換できます）。")
     if fmt == "html":
         # HTMLは本文抽出+画像src絶対URL化（html_to_md.py と同じロジック）
         from html_to_md import absolutize, to_markdown
-        html = open(path, encoding="utf-8", errors="ignore").read()
+        html = read_html_file(path, content_type)  # 文字コードを判定して読む
         base = url or "https://example.com/"
         return to_markdown(absolutize(html, base), base)
     from markitdown import MarkItDown
@@ -113,7 +97,15 @@ def main():
         print(f'  （uvが無い場合: python3 "{youtube_script}" ...）', file=sys.stderr)
         return
 
-    tmpdir = tempfile.mkdtemp()
+    tmpdir = tempfile.mkdtemp(prefix="url2md_")
+    try:
+        _run(args, tmpdir)
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)  # 一時フォルダを残さない
+
+
+def _run(args, tmpdir):
+    """取得 → 形式判定 → 分岐（main から一時フォルダつきで呼ばれる）。"""
     raw = os.path.join(tmpdir, "downloaded")
     print(f"[1] 取得: {args.url}", file=sys.stderr)
     ct = fetch(args.url, raw)
@@ -125,7 +117,7 @@ def main():
         pdf_path = (args.output or "downloaded") + ".pdf" \
             if not (args.output or "").endswith(".pdf") else args.output
         pdf_path = pdf_path or os.path.join(os.getcwd(), "downloaded.pdf")
-        os.replace(raw, pdf_path)
+        move(raw, pdf_path)  # ドライブをまたいでも動く
         print(f"[3] PDF保存: {pdf_path}", file=sys.stderr)
         print(f"→ pdf-to-md-ja スキルで変換してください: {pdf_path}", file=sys.stderr)
         print(pdf_path)  # stdoutにはパスだけ
@@ -134,29 +126,38 @@ def main():
     if fmt in ("docx", "xlsx", "pptx") and args.pdf_passthrough:
         # Officeは PDF化 → pdf-to-md-ja へ委譲（図再現のため）
         src = raw + "." + fmt
-        os.replace(raw, src)
+        move(raw, src)
         outdir = os.path.dirname(os.path.abspath(args.output or "out")) or os.getcwd()
-        r = subprocess.run(
-            ["soffice", "--headless", "--convert-to", "pdf", "--outdir", outdir, src],
-            capture_output=True, text=True, timeout=180)
+        try:
+            r = subprocess.run(
+                ["soffice", "--headless", "--convert-to", "pdf", "--outdir", outdir, src],
+                capture_output=True, timeout=180)
+        except FileNotFoundError:
+            raise StopReason(
+                "MISSING_TOOL",
+                "LibreOffice（soffice）が見つかりません。Office ファイルを PDF にできません。",
+                "LibreOffice を導入して soffice に PATH を通すか、"
+                "PDF で保存し直して渡してください。") from None
         pdf_path = os.path.join(outdir, os.path.basename(src).rsplit(".", 1)[0] + ".pdf")
         if r.returncode != 0 or not os.path.exists(pdf_path):
-            raise RuntimeError(f"soffice PDF化失敗: {r.stderr[:200]}")
+            detail = r.stderr.decode("utf-8", errors="replace")[:200]
+            raise StopReason("CONVERT_FAILED", f"soffice での PDF 化に失敗しました: {detail}",
+                             "PDF で保存し直して渡してください。")
         print(f"[3] {fmt}→PDF: {pdf_path}", file=sys.stderr)
         print(f"→ pdf-to-md-ja スキルで変換してください: {pdf_path}", file=sys.stderr)
         print(pdf_path)
         return
 
     print(f"[3] 変換中...", file=sys.stderr)
-    text = convert(raw, fmt, url=args.url)
+    text = convert(raw, fmt, url=args.url, content_type=ct)
 
     if args.output:
         with open(args.output, "w", encoding="utf-8") as f:
             f.write(text)
         print(f"[4] 出力: {args.output}", file=sys.stderr)
     else:
-        print(text)
+        write_stdout(text + "\n")
 
 
 if __name__ == "__main__":
-    main()
+    run_main(main)

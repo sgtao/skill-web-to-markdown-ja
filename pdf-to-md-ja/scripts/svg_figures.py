@@ -12,7 +12,7 @@ svg_figures.py — PDFの数値図をSVGで再現する汎用ジェネレータ
 
 各関数は (svg_string, warnings_list) を返す。warnings が空なら配置OK。
 
-CLIテスト: python3 svg_figures.py  → サンプル3図を /tmp に出力
+CLIテスト: python svg_figures.py  → サンプル3図を一時フォルダに出力
 """
 import math
 
@@ -167,6 +167,12 @@ def flow_cycle(left_label, right_label, top_label, bottom_label,
 
 
 if __name__ == "__main__":
+    import os
+    import sys
+    import tempfile
+    # Windows の cp932 でも日本語のパスや文字を表示できるようにする
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     # サンプル出力（自己テスト）
     donut, w1 = donut_chart(
         [("日本", 64.9, "#1A0DAB"), ("欧州", 18.7, "#1A3FD4"),
@@ -180,6 +186,9 @@ if __name__ == "__main__":
     flow, w3 = flow_cycle("社員", "会社", "貢献", "成長を促す")
     for name, (svg, warn) in [("donut", (donut, w1)), ("bubble", (bubble, w2)),
                                ("flow", (flow, w3))]:
-        open(f"/tmp/_test_{name}.svg", "w").write(svg)
-        status = "✅ OK" if not warn else "❌ " + "; ".join(warn)
-        print(f"[{name}] {status}  → /tmp/_test_{name}.svg")
+        # 一時フォルダは OS に合わせる（Windows に /tmp は無い）。SVG は UTF-8 で書く
+        path = os.path.join(tempfile.gettempdir(), f"_test_{name}.svg")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(svg)
+        status = "OK" if not warn else "NG " + "; ".join(warn)
+        print(f"[{name}] {status}  -> {path}")

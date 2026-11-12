@@ -22,18 +22,28 @@ trafilaturaが本文を取りこぼす場合に備え、markitdownフォール�
   echo "<html>..." | python3 html_to_md.py <URL> --stdin -o out.md
 """
 import argparse
-import subprocess
+import os
+import shutil
 import sys
+import tempfile
 from urllib.parse import urljoin
+
+from _common import decode_html, fetch, read_html_file, run_main, write_stdout
 
 
 def fetch_html(url):
-    r = subprocess.run(
-        ["curl", "-sL", "-A", "Mozilla/5.0", url],
-        capture_output=True, text=True, timeout=120)
-    if r.returncode != 0 or not r.stdout:
-        raise RuntimeError(f"curl失敗または空: {r.stderr[:200]}")
-    return r.stdout
+    """URLのHTMLを取得し、文字コードを判定して文字列で返す。
+
+    curl の出力はバイト列で受ける（Windows の既定 cp932 で読んで壊さないため）。
+    失敗は _common.StopReason（理由コードつき）で伝わる。
+    """
+    tmpdir = tempfile.mkdtemp(prefix="url2md_")
+    try:
+        raw = os.path.join(tmpdir, "page.html")
+        content_type = fetch(url, raw)
+        return read_html_file(raw, content_type)
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
 
 
 def absolutize(html, base_url):
@@ -95,7 +105,9 @@ def main():
                     help="HTMLを標準入力から受け取る（curl省略）")
     args = ap.parse_args()
 
-    html = sys.stdin.read() if args.stdin else fetch_html(args.url)
+    # 標準入力もバイト列で受けて、文字コードを判定する
+    html = (decode_html(sys.stdin.buffer.read()) if args.stdin
+            else fetch_html(args.url))
     print(f"[1] 画像src等を絶対URL化（base={args.url}）", file=sys.stderr)
     html = absolutize(html, args.url)
     print("[2] 本文抽出 + Markdown化", file=sys.stderr)
@@ -106,8 +118,8 @@ def main():
             f.write(md)
         print(f"[3] 出力: {args.output}", file=sys.stderr)
     else:
-        print(md)
+        write_stdout(md + "\n")
 
 
 if __name__ == "__main__":
-    main()
+    run_main(main)

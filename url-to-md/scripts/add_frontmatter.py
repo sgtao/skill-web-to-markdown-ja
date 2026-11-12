@@ -31,6 +31,8 @@ import datetime
 import re
 import sys
 
+from _common import setup_stdio
+
 
 def detect_has_figures(md):
     """SVG/Mermaid/画像参照のいずれかを含むか。"""
@@ -128,6 +130,7 @@ def main():
     ap.add_argument("--retrieved-at", default=None)
     ap.add_argument("-o", "--output", default=None)
     args = ap.parse_args()
+    setup_stdio()  # Windows の cp932 で落ちないよう、標準出力を UTF-8 にする
 
     with open(args.body, encoding="utf-8") as f:
         md = f.read()

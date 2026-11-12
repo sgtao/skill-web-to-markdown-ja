@@ -1,0 +1,62 @@
+# CHANGELOG
+
+このスキルセット（`url-to-md`・`pdf-to-md-ja`）の変更履歴です。
+
+**版の付け方**: v0.0.1 から数える。改修のフェーズを 1 つ終えるたびにパッチ版を 1 つ上げ、
+改修プランがすべて完了したら v0.1.0 とする。
+`pyproject.toml` にはこれまで `0.2.0` と書かれていたが、タグの無い仮の表記だったため、
+v0.0.1 から数え直した。
+
+---
+## [v0.0.1] - 2026-11-12
+
+### 修正｜スクリプトの土台（文字コード・失敗の伝え方・取得）
+
+外から見た使い方（引数・出力の形）は変えずに、落ち方を直した。
+主な目的は、Windows でスクリプトがそのまま動くようにすること。
+
+- **共通の土台 `url-to-md/scripts/_common.py` を新設**（標準ライブラリのみ）
+  - 標準出力・標準エラーを UTF-8 にする。Windows の既定（cp932）で、絵文字などを
+    出力した時点で `UnicodeEncodeError` になっていた
+  - 取得（curl）を 1 か所にまとめた。出力はバイト列で受ける。これまで `html_to_md.py` は
+    `text=True` で受けていて、Windows では UTF-8 のページが文字化け・例外になっていた
+  - HTML の文字コードを「BOM → HTTP ヘッダ → meta タグ → UTF-8 → 推定 → cp932」の順で決める。
+    これまで `fetch_convert.py` は UTF-8 と決め打ちで、Shift_JIS のページが壊れていた
+  - HTTP ステータスを確かめる。これまで 404・403 でもエラーページを保存して成功扱いになり、
+    エラーページが Markdown になっていた
+  - HEAD をやめ、1 回の GET でヘッダも受け取る（HEAD を拒むサーバーがあるため）
+  - `http` / `https` 以外の URL（`file://` など）を止める
+  - ファイルの移動を、ドライブ（ファイルシステム）をまたいでも動く方法にした。一時フォルダは消す
+- **失敗の伝え方を統一**（`fetch_convert.py`・`html_to_md.py`）
+  - トレースバックを出さず、標準エラーの最後に `[stop] 理由`・`[next] 次の手段`・`REASON=<理由コード>` を出す
+  - 終了コード: `0` 成功／`1` 想定外のエラー／`2` 引数の誤り／`3` 取得・変換できない／`4` 必要な道具が無い
+  - 理由コード: `NO_NETWORK`・`UNSUPPORTED_SCHEME`・`HTTP_ERROR`・`EMPTY_CONTENT`・`FETCH_FAILED`・
+    `CONVERT_FAILED`・`UNSUPPORTED_FORMAT`・`MISSING_TOOL`・`UNEXPECTED`
+  - LibreOffice（soffice）が見つからないときは、例外ではなく `MISSING_TOOL`（終了コード 4）で止まる
+  - 想定外のエラーの詳しい表示は、環境変数 `URL_TO_MD_DEBUG=1` のときだけ出す
+- `youtube_to_md.py`・`add_frontmatter.py`: 標準出力を UTF-8 にした
+- `pdf-to-md-ja/scripts/svg_figures.py`: 自己テストの出力先を `/tmp` 決め打ちから OS の一時フォルダに変え、
+  SVG を UTF-8 で書くようにした。表示の `✅` `❌` を `OK` `NG` にした
+
+### 追加｜テスト
+
+- `tests/`（47 件。外部への通信なし。HTTP は手元だけで動くサーバーを使う）
+- `tests/fixtures/`（自作の HTML 3 本: Shift_JIS・宣言なしの Shift_JIS・絵文字入りの UTF-8）
+- 実行: `uv run --python 3.12 --with pytest pytest`
+
+### 既知の問題
+
+- `uv.lock` の `onnxruntime 1.20.1` は Python 3.14 用の配布物が無く、Python 3.14 では `uv sync` が失敗する
+  （3.10〜3.13 を使う）。スクリプトを `uv run <スクリプト>` で動かす場合は `uv.lock` を使わないので影響しない
+- xlsx / pptx の直接変換に必要な依存が無い（次の版以降で対応する）
+- Windows と Claude.ai では、まだ実機で確かめていない
+
+---
+## v0.0.1 より前（タグなし）
+
+`git log` からの要約。
+
+- 2026-10-23: `install.sh` を GitHub Copilot・`.agents` に対応
+- 2026-10-17: `youtube_to_md.py` の Python 3.9 対応、`install.sh` の bash 3.2 対応、案内文の絶対パス化
+- それ以前: `youtube_to_md.py` の追加（YouTube の概要＋字幕）、PEP 723 による `uv run` 対応、
+  `pyproject.toml` の追加、`add_frontmatter.py` の YouTube 対応

@@ -32,6 +32,8 @@ import subprocess
 import sys
 import urllib.request
 
+from _common import setup_stdio
+
 YOUTUBE_URL_RE = re.compile(
     r"(?:https?://)?(?:www\.|m\.)?"
     r"(?:youtube\.com/(?:watch\?[^\s]*v=|shorts/|live/|embed/)|youtu\.be/)"
@@ -296,6 +298,7 @@ def main() -> None:
     ap.add_argument("--timeout", type=int, default=120,
                     help="yt-dlpのタイムアウト秒（既定120）")
     args = ap.parse_args()
+    setup_stdio()  # Windows の cp932 で落ちないよう、標準出力を UTF-8 にする
 
     if not is_youtube_url(args.url):
         print(f"[error] YouTube動画のURLではありません: {args.url}", file=sys.stderr)
