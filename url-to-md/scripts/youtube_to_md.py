@@ -131,15 +131,20 @@ def select_caption_track(info: dict) -> tuple[str, str, str] | None:
             lang = orig_keys[0][: -len("-orig")]
     if not lang:
         return None
-    if lang in subs:
-        url = _json3_url(subs[lang])
-        if url:
-            return (lang, url, "manual")
-    for key in (f"{lang}-orig", lang):
-        if key in autos:
-            url = _json3_url(autos[key])
+    # 地域付きの言語コード（en-US など）は、字幕のキー（en など）と一致しないことがあるため、
+    # 地域を外した形も候補にする。
+    candidates = list(dict.fromkeys([lang, lang.split("-")[0]]))
+    for cand in candidates:
+        if cand in subs:
+            url = _json3_url(subs[cand])
             if url:
-                return (lang, url, "auto")
+                return (cand, url, "manual")
+    for cand in candidates:
+        for key in (f"{cand}-orig", cand):
+            if key in autos:
+                url = _json3_url(autos[key])
+                if url:
+                    return (cand, url, "auto")
     return None
 
 
