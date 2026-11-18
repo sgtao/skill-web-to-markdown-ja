@@ -728,7 +728,9 @@ def cmd_index(args) -> dict:
     rows = ["| # | 状態 | 元のパス | 解説メモ |", "|---|---|---|---|"]
     for i in items:
         status = i["status"] + (f"（{i['reason']}）" if i["status"] == "failed" else "")
-        rows.append(f"| {i['id']} | {status} | `{i['path'].replace('|', '\\|')}` | [{i['slug']}]({i['slug']}/explained/README.md) |")
+        # f 文字列の {} の中に \ を書けるのは Python 3.12 以降。3.10 でも動くように、先に作る
+        path_cell = i['path'].replace('|', '\\|')
+        rows.append(f"| {i['id']} | {status} | `{path_cell}` | [{i['slug']}]({i['slug']}/explained/README.md) |")
     sk = [f"- `{s['path']}`（{s['reason']}）" for s in skipped] or ["（なし）"]
     text = ("# 一覧\n\n"
             f"入力: {data['input_name']}（{len(items)} 件）\n\n"

@@ -1,6 +1,6 @@
 """collect_sources.py の検査（合格条件 5）。見本は、このファイルの中で作る（バイナリの見本を置かない）。
 
-実行: uv run --python 3.12 --with pytest python -m pytest -q tests/test_collect_sources.py
+実行: uv run --python 3.10 --with pytest python -m pytest -q tests/test_collect_sources.py（3.10・3.11・3.12 のどれでも通ること。f 文字列の書き方の差で落ちた実例がある）
 """
 import hashlib
 import io
