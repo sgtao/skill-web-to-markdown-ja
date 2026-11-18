@@ -59,6 +59,7 @@ description: >
 | docx / xlsx / pptx を**直接変換**で Markdown にしたとき（`ROUTE=direct`） | 上に加えて `workflows/office-direct.md` |
 | PDF が得られたとき（`ROUTE=pdf` ほか） | `pdf-to-md-ja` スキルに PDF のパスを渡す |
 | 変換後の仕上げ（フロントマター・確認） | `workflows/finish.md` |
+| 複数の入力（フォルダ・ZIP・複数ファイル）を、1 件ずつに分ける（解説の処理から使う） | `workflows/collection.md` |
 
 ## 失敗したとき
 

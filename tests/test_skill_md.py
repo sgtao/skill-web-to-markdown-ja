@@ -10,7 +10,7 @@ import pytest
 import _common
 
 SCRIPTS = ["fetch_convert.py", "html_to_md.py", "youtube_to_md.py",
-           "add_frontmatter.py", "office_extract.py"]
+           "add_frontmatter.py", "office_extract.py", "collect_sources.py"]
 
 
 @pytest.fixture(scope="module")
