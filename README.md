@@ -1,5 +1,9 @@
 # skill-web-to-markdown
 
+> **DEPRECATED**：このリポジトリでの開発は終えました。今後は [sgtao/ced-skills](https://github.com/sgtao/ced-skills) で開発・配布します。
+> このリポジトリの内容は、そのまま残しています（新しい版は作りません）。
+
+
 Web 上のコンテンツ（HTML / PDF / docx / xlsx / pptx / YouTube 動画）や手元のファイルを
 Markdown に変換するスキルセット。「取得 → 形式判定 → 変換」まで行い、
 表は Markdown テーブルに、図は SVG / Mermaid / 抽出画像として、YouTube は概要＋字幕
